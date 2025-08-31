@@ -23,9 +23,14 @@ const useUIStore = create<UIStoreState & UIStoreActions>((set) => ({
   setModalOpen: (value: boolean) => set({ modalOpen: value }),
 }));
 
-const useEditorStore=create((set)=>({
-  code:"Enter your code here",
-  setCode:(value: string) => set({ code: value })
+interface EditorState {
+  code: string;
+  setCode: (value: string) => void;
+}
+
+const useEditorStore = create<EditorState>((set) => ({
+  code: "Enter your code here",
+  setCode: (value: string) => set({ code: value }),
 }));
 
 export { useUIStore, useEditorStore };

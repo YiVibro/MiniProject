@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pymupdf
+supabase
+httpx
+python-dotenv
+python-multipart
+google-genai
+python-dotenv
+vectorstore
+langchain_google_genai
+langchain
+PyPDF2
+pdfplumber

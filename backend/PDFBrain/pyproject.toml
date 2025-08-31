@@ -1,0 +1,18 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "django-routers>=0.2",
+    "fastapi>=0.116.1",
+    "google-genai>=1.31.0",
+    "pdfplumber>=0.11.7",
+    "psycopg2-binary>=2.9.10",
+    "pydantic>=2.11.7",
+    "pypdf2>=3.0.1",
+    "python-dotenv>=1.1.1",
+    "python-multipart>=0.0.20",
+    "sqlalchemy>=2.0.43",
+    "uvicorn>=0.35.0",
+]
