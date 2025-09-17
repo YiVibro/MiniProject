@@ -1,6 +1,5 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
-import daisyui from "daisyui";
 
 const config: Config = {
   darkMode: ["class"],
@@ -21,6 +20,7 @@ const config: Config = {
     },
     extend: {
       colors: {
+        'my-custom-blue': '#273C56',
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -103,10 +103,25 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        'gradient-slow': {
+        '0%, 100%': { 'background-position': '0% 50%' },
+        '50%': { 'background-position': '100% 50%' },
+       },
+        "float-x": {
+        "0%, 100%": { transform: "translateX(0px)" },
+        "50%": { transform: "translateX(20px)" },
+        },
+        "float-y": {
+        "0%, 100%": { transform: "translateY(0px)" },
+        "50%": { transform: "translateY(20px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        'gradient-slow': 'gradient-slow 10s ease infinite',
+        "float-x": "float-x 6s ease-in-out infinite",
+        "float-y": "float-y 5s ease-in-out infinite",
       },
     },
   },

@@ -77,7 +77,11 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-screen bg-gradient-to-b from-[#0f0f11] to-[#1a1a1f] text-gray-100 p-6 space-y-6 transition-colors">
+        <div className="min-h-screen 
+    bg-gradient-to-b from-gray-50 to-white text-gray-900
+    dark:from-[#0f0f11] dark:to-[#1a1a1f] dark:text-gray-100
+    p-6 space-y-6 transition-colors
+  ">
           <div className="space-y-2">
             <Label htmlFor="title">Goal Title</Label>
             <Input
@@ -85,17 +89,23 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
               placeholder="e.g., Master Calculus Fundamentals"
               value={goalData.title}
               onChange={(e) => setGoalData({...goalData, title: e.target.value})}
-              className="bg-gray-800 text-white placeholder-gray-400 focus:border-blue-500"
+              className="bg-white text-gray-900 placeholder-gray-500 
+             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
+             focus:border-blue-500"
             />
           </div>
 
           <div className="space-y-2">
             <Label>Subject</Label>
             <Select value={goalData.subject} onValueChange={(value) => setGoalData({...goalData, subject: value})}>
-              <SelectTrigger className="bg-gray-800 text-white">
+              <SelectTrigger className="bg-white text-gray-900 placeholder-gray-500 
+             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
+             focus:border-blue-500">
                 <SelectValue placeholder="Select a subject" />
               </SelectTrigger>
-              <SelectContent className="bg-gray-800 text-white">
+              <SelectContent className="bg-white text-gray-900 placeholder-gray-500 
+             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
+             focus:border-blue-500">
                 {subjects.map((subject) => (
                   <SelectItem key={subject} value={subject}>{subject}</SelectItem>
                 ))}
@@ -139,7 +149,9 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                 placeholder="e.g., 5"
                 value={goalData.duration}
                 onChange={(e) => setGoalData({...goalData, duration: e.target.value})}
-                className="bg-gray-800 text-white placeholder-gray-400 focus:border-blue-500"
+                className="bg-white text-gray-900 placeholder-gray-500 
+             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
+             focus:border-blue-500"
               />
             </div>
             <div className="space-y-2">
@@ -149,7 +161,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-full justify-start text-left font-normal bg-gray-800 text-white",
+                      "w-full justify-start text-left font-normal bg-white-800 text-gray-900 placeholder-gray-500 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400",
                       !goalData.targetDate && "text-gray-400"
                     )}
                   >
@@ -163,7 +175,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                     selected={goalData.targetDate}
                     onSelect={(date) => setGoalData({...goalData, targetDate: date})}
                     initialFocus
-                    className="bg-gray-800 text-white"
+                    className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white"
                   />
                 </PopoverContent>
               </Popover>
@@ -178,7 +190,9 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
               value={goalData.description}
               onChange={(e) => setGoalData({...goalData, description: e.target.value})}
               rows={3}
-              className="bg-gray-800 text-white placeholder-gray-400 focus:border-blue-500"
+              className="bg-white text-gray-900 placeholder-gray-500 
+             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
+             focus:border-blue-500"
             />
           </div>
 
@@ -205,7 +219,9 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                 <Label>Uploaded Files:</Label>
                 <div className="flex flex-wrap gap-2">
                   {uploadedFiles.map((fileName, index) => (
-                    <Badge key={index} variant="secondary" className="gap-1 bg-gray-800 text-white">
+                    <Badge key={index} variant="secondary" className="gap-1 bg-white text-gray-900 placeholder-gray-500 
+             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
+             focus:border-blue-500">
                       {fileName}
                       <X className="w-3 h-3 cursor-pointer" onClick={() => removeFile(fileName)} />
                     </Badge>
@@ -216,7 +232,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
           </div>
 
           <div className="flex gap-3 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 bg-gray-800 text-white hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500">
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 bg-white-800 text-gray-900 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400  focus:border-blue-500">
               Cancel
             </Button>
             <Button 

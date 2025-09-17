@@ -6,9 +6,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Brain } from "lucide-react";
 import { CreateGoalDialog } from "./CreateGoalDialog";
+import { useAuth } from "../store/AuthContext";
 
 export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
+  const { user, logout } = useAuth(); 
 
   const recentCourses = [
     { id: 1, title: "Advanced Mathematics", subject: "Mathematics", progress: 75, goalType: "exam prep", dueDate: "2024-02-15", totalLessons: 12, completedLessons: 9 },

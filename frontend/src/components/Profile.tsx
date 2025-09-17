@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, Edit3, Save, X, Trophy, Target, Clock, BookOpen, Award, TrendingUp, Calendar, Brain, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { motion, Variants, easeInOut } from "framer-motion";
 
 export const Profile = () => {
   const { toast } = useToast();
@@ -45,85 +46,163 @@ export const Profile = () => {
     toast({ title: "Profile Updated", description: "Your profile has been successfully updated." });
   };
 
-  const handleCancel = () => { setEditData(profileData); setIsEditing(false); };
+  const handleCancel = () => { 
+    setEditData(profileData); 
+    setIsEditing(false); 
+  };
+
+  const cardVariants: Variants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: easeInOut } }
+  };
+
+  const achievementVariants: Variants = {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: (i: number) => ({ opacity: 1, scale: 1, transition: { delay: i * 0.2, duration: 0.7, ease: easeInOut } }),
+  };
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
+    <motion.div className="p-4 sm:p-6 space-y-6 max-w-6xl mx-auto" initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 }}}}>
+      
+      {/* Header */}
+      <motion.div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 sm:gap-0" variants={cardVariants}>
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2"><User className="w-8 h-8 text-primary"/>My Profile</h1>
-          <p className="text-muted-foreground">Manage your account and track your learning journey</p>
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2 text-foreground dark:text-white">
+            <User className="w-7 h-7 text-primary"/>My Profile
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground dark:text-gray-300">Manage your account and track your learning journey</p>
         </div>
         <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "outline" : "default"} className="gap-2">
           {isEditing ? <><X className="w-4 h-4"/> Cancel</> : <><Edit3 className="w-4 h-4"/> Edit Profile</>}
         </Button>
-      </div>
+      </motion.div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="bg-card shadow-md border border-border hover:shadow-lg transition-shadow">
-            <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center gap-6">
-                <Avatar className="w-20 h-20"><AvatarImage src="/placeholder-avatar.jpg"/><AvatarFallback>{profileData.name.split(' ').map(n=>n[0]).join('')}</AvatarFallback></Avatar>
-                {isEditing && <Button variant="outline" size="sm">Change Photo</Button>}
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  {isEditing ? <Input id="name" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})}/> : <p className="p-2 bg-muted rounded-md">{profileData.name}</p>}
+      {/* Personal Info & Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Personal Info */}
+        <motion.div className="lg:col-span-2 space-y-6" variants={cardVariants}>
+          <div className="relative">
+            <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-purple-400 via-blue-400 to-pink-400 opacity-10 dark:opacity-30 blur-3xl pointer-events-none"></div>
+            <Card className="relative bg-white dark:bg-gray-800/80 backdrop-blur-md shadow-lg border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform duration-500 ease-in-out">
+              <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
+              <CardContent className="space-y-6">
+                <motion.div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8 }}>
+                  <Avatar className="w-20 h-20">
+                    <AvatarImage src="/placeholder-avatar.jpg"/>
+                    <AvatarFallback>{profileData.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+                  {isEditing && <Button variant="outline" size="sm">Change Photo</Button>}
+                </motion.div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    {isEditing ? <Input id="name" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})}/> : <p className="p-2 bg-gray-100 dark:bg-gray-700 rounded-md">{profileData.name}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    {isEditing ? <Input id="email" type="email" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})}/> : <p className="p-2 bg-gray-100 dark:bg-gray-700 rounded-md">{profileData.email}</p>}
+                  </div>
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  {isEditing ? <Input id="email" type="email" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})}/> : <p className="p-2 bg-muted rounded-md">{profileData.email}</p>}
+                  <Label htmlFor="bio">Bio</Label>
+                  {isEditing ? <Textarea id="bio" value={editData.bio} onChange={e => setEditData({...editData, bio:e.target.value})} rows={3}/> : <p className="p-2 bg-gray-100 dark:bg-gray-700 rounded-md">{profileData.bio}</p>}
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
-                {isEditing ? <Textarea id="bio" value={editData.bio} onChange={e => setEditData({...editData, bio:e.target.value})} rows={3}/> : <p className="p-2 bg-muted rounded-md">{profileData.bio}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="studyGoal">Current Study Goal</Label>
-                {isEditing ? <Input id="studyGoal" value={editData.studyGoal} onChange={e => setEditData({...editData, studyGoal:e.target.value})}/> : <p className="p-2 bg-muted rounded-md">{profileData.studyGoal}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label>Preferred Subjects</Label>
-                <div className="flex flex-wrap gap-2">{profileData.preferredSubjects.map(s => <Badge key={s} variant="secondary">{s}</Badge>)}{isEditing && <Button variant="outline" size="sm">+ Add Subject</Button>}</div>
-              </div>
-              {isEditing && <div className="flex gap-2 pt-4"><Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4"/> Save Changes</Button><Button variant="outline" onClick={handleCancel}>Cancel</Button></div>}
-            </CardContent>
-          </Card>
-        </div>
 
-        <div className="space-y-6">
-          <Card className="bg-card shadow-md border border-border hover:shadow-lg transition-shadow">
-            <CardHeader><CardTitle className="text-lg">Study Statistics</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              {stats.map(s => { const Icon = s.icon; return <div key={s.label} className="flex items-center justify-between"><div className="flex items-center gap-2"><Icon className={`w-4 h-4 ${s.color}`}/><span className="text-sm text-muted-foreground">{s.label}</span></div><span className="font-semibold">{s.value}</span></div> })}
-            </CardContent>
-          </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="studyGoal">Current Study Goal</Label>
+                  {isEditing ? <Input id="studyGoal" value={editData.studyGoal} onChange={e => setEditData({...editData, studyGoal:e.target.value})}/> : <p className="p-2 bg-gray-100 dark:bg-gray-700 rounded-md">{profileData.studyGoal}</p>}
+                </div>
 
-          <Card className="bg-card shadow-md border border-border hover:shadow-lg transition-shadow">
-            <CardHeader><CardTitle className="text-lg">Weekly Goal</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm"><span>Study Hours</span><span>{profileData.studyHours}/{profileData.weeklyGoal} hrs</span></div>
-                <Progress value={(profileData.studyHours/profileData.weeklyGoal)*100} className="h-2"/>
-              </div>
-              <p className="text-xs text-muted-foreground">{profileData.weeklyGoal-profileData.studyHours} hours remaining this week</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                <div className="space-y-2">
+                  <Label>Preferred Subjects</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {profileData.preferredSubjects.map(s => <Badge key={s} variant="secondary">{s}</Badge>)}
+                    {isEditing && <Button variant="outline" size="sm">+ Add Subject</Button>}
+                  </div>
+                </div>
 
-      <Card className="bg-card shadow-md border border-border hover:shadow-lg transition-shadow">
-        <CardHeader><CardTitle className="flex items-center gap-2"><Award className="w-5 h-5 text-primary"/>Achievements</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {achievements.map(a => { const Icon = a.icon; return <div key={a.id} className={`p-4 rounded-lg border transition-all ${a.earned?'bg-primary/5 border-primary/20':'bg-muted/30 border-muted opacity-60'}`}><div className="flex items-start gap-3"><div className={`p-2 rounded-full ${a.earned?'bg-primary text-primary-foreground':'bg-muted text-muted-foreground'}`}><Icon className="w-4 h-4"/></div><div className="space-y-1 flex-1"><h4 className="font-medium text-sm">{a.title}</h4><p className="text-xs text-muted-foreground">{a.description}</p>{a.earned && <Badge variant="default" className="text-xs">Earned</Badge>}</div></div></div> })}
+                {isEditing && <div className="flex flex-wrap gap-2 pt-4">
+                  <Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4"/> Save Changes</Button>
+                  <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+                </div>}
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </motion.div>
+
+        {/* Stats Column */}
+        <motion.div className="space-y-6" variants={cardVariants}>
+          {/* Study Statistics */}
+          <div className="relative">
+            <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-green-200 via-green-300 to-blue-300 opacity-10 dark:opacity-30 blur-3xl pointer-events-none"></div>
+            <Card className="relative bg-white dark:bg-gray-800/80 backdrop-blur-md shadow-lg border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform duration-500 ease-in-out">
+              <CardHeader><CardTitle className="text-lg">Study Statistics</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                {stats.map((s, i) => (
+                  <motion.div key={s.label} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.2, duration: 0.8, ease: easeInOut }} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <s.icon className={`w-4 h-4 ${s.color}`} />
+                      <span className="text-sm text-muted-foreground dark:text-gray-300">{s.label}</span>
+                    </div>
+                    <span className="font-semibold">{s.value}</span>
+                  </motion.div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Weekly Goal */}
+          <div className="relative">
+            <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-purple-200 via-pink-200 to-yellow-200 opacity-10 dark:opacity-30 blur-3xl pointer-events-none"></div>
+            <Card className="relative bg-white dark:bg-gray-800/80 backdrop-blur-md shadow-lg border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform duration-500 ease-in-out">
+              <CardHeader><CardTitle className="text-lg">Weekly Goal</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Study Hours</span>
+                    <span>{profileData.studyHours}/{profileData.weeklyGoal} hrs</span>
+                  </div>
+                  <motion.div initial={{ width: 0 }} animate={{ width: (profileData.studyHours/profileData.weeklyGoal)*100 + "%" }} transition={{ duration: 1, ease: easeInOut }}>
+                    <Progress value={(profileData.studyHours/profileData.weeklyGoal)*100} className="h-2"/>
+                  </motion.div>
+                </div>
+                <p className="text-xs text-muted-foreground dark:text-gray-300">{profileData.weeklyGoal - profileData.studyHours} hours remaining this week</p>
+              </CardContent>
+            </Card>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Achievements */}
+      <div className="relative">
+        <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-yellow-200 via-pink-200 to-purple-200 opacity-10 dark:opacity-30 blur-3xl pointer-events-none"></div>
+        <Card className="relative bg-white dark:bg-gray-800/80 backdrop-blur-md shadow-lg border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform duration-500 ease-in-out">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary"/>Achievements
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {achievements.map((a, i) => (
+                <motion.div key={a.id} custom={i} initial="hidden" animate="visible" variants={achievementVariants} className={`p-4 rounded-lg border transition-all ${a.earned ? 'bg-primary/5 border-primary/20 dark:ring-2 dark:ring-primary/50 dark:shadow-lg' : 'bg-gray-100 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 opacity-60'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-full ${a.earned ? 'bg-primary text-primary-foreground dark:bg-primary dark:text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-500'}`}>
+                      <a.icon className="w-4 h-4"/>
+                    </div>
+                    <div className="space-y-1 flex-1">
+                      <h4 className="font-medium text-sm">{a.title}</h4>
+                      <p className="text-xs text-muted-foreground dark:text-gray-300">{a.description}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </motion.div>
   );
 };

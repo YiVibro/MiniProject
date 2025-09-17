@@ -1,21 +1,51 @@
 from fastapi import APIRouter, Request
 from starlette.responses import RedirectResponse
-from app.models.user import UserModel
+from authlib.integrations.starlette_client import OAuth
+import os
 
 router = APIRouter()
-@router.get("/login/callback")
-async def oauth_callback(request: Request):
-    google_user = {
-        "email": "test@example.com",
-        "username": "TestUser"
-    }
 
-    user = UserModel.get_user_by_email(google_user["email"])
+# Setup OAuth
+oauth = OAuth()
+oauth.register(
+    name="google",
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
+
+@router.get("/login")
+async def login(request: Request):
+    redirect_uri = request.url_for("auth_callback")
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@router.get("/callback")
+async def auth_callback(request: Request):
+    token = await oauth.google.authorize_access_token(request)
+    user = await oauth.google.parse_id_token(request, token)
+
+    # Save user in session
+    request.session["user"] = dict(user)
+
+    # If you want to store user in Supabase DB:
+    # from app.database.db import supabase
+    # supabase.table("users").upsert({
+    #     "name": user.get("name"),
+    #     "email": user.get("email"),
+    #     "profile_pic": user.get("picture"),
+    # }).execute()
+
+    return RedirectResponse(url="/oauth/protected")
+
+@router.get("/protected")
+async def protected(request: Request):
+    user = request.session.get("user")
     if not user:
-        UserModel.create_user(
-            email=google_user["email"],
-            username=google_user["username"]
-        )
-        return {"message": "User created in Supabase", "user": google_user}
+        return RedirectResponse(url="/oauth/login")
+    return {"message": f"Hello {user['email']}"}
 
-    return {"message": "User already exists", "user": user}
+@router.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return {"message": "Logged out"}

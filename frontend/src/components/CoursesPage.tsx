@@ -1,58 +1,8 @@
-import { useState } from "react";
-import { LandingPage } from "./LandingPage";
-import { Navigation } from "./Navigation";
-import { Dashboard } from "./Dashboard";
-import { AIChatInterface } from "./AIChatInterface";
-import { NotesSection } from "./NotesSection";
-import { Workshops } from "./Workshops";
-import { Profile } from "./Profile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
 
-export const StudySparkApp = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
-
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-  };
-
-  if (!isLoggedIn) {
-    return <LandingPage onLogin={handleLogin} />;
-  }
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'courses':
-        return <CoursesPage />;
-      case 'ai-chat':
-        return <AIChatInterface />;
-      case 'notes':
-        return <NotesSection />;
-      case 'workshops':
-        return <Workshops />;
-      case 'profile':
-        return <Profile />;
-      default:
-        return <Dashboard />;
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-background">
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-      <main>
-        {renderContent()}
-      </main>
-    </div>
-  );
-};
-
-// Courses Page with animations and uniform card heights
-const CoursesPage = () => {
+export const CoursesPage = () => {
   const courses = [
     {
       id: 1,
@@ -89,7 +39,7 @@ const CoursesPage = () => {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2 text-foreground">
             <BookOpen className="w-8 h-8 text-primary" />
-             My Courses
+            My Courses
           </h1>
           <p className="text-muted-foreground">Track your learning progress and continue your studies</p>
         </div>

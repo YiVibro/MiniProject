@@ -37,9 +37,9 @@
 #     else:
 #         raise HTTPException(status_code=401, detail="Invalid password")
 
-
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
@@ -48,13 +48,33 @@ load_dotenv()
 
 app = FastAPI()
 
-# Add session middleware (needed for OAuth)
-app.add_middleware(SessionMiddleware, secret_key="supersecret_session_key")
+# Add session middleware (needed for OAuth user sessions)
+# Configure cookie for cross-site usage (frontend and backend on different origins)
+SESSION_SAMESITE = os.getenv("SESSION_SAMESITE", "none").lower()
+SESSION_HTTPS_ONLY = os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY", "supersecret_session_key"),
+    same_site=SESSION_SAMESITE,   # "none" for cross-site XHR
+    https_only=SESSION_HTTPS_ONLY # set true in production over HTTPS
+)
 
+# CORS for frontend
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-from app.routes import oauth  
+# Import routers
+from app.routes import auth, oauth
 
-app.include_router(oauth.router)   
+# Include both routers
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 
 @app.get("/")
 def root():
