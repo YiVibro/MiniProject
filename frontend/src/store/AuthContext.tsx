@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../lib/supabaseClient"; 
 
 interface User {
   name: string;
@@ -10,18 +10,24 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  loading: boolean;
   login: (user: User, token?: string) => void;
-  logout: () => void;
+  logout: () =>Promise<void>;
+  refreshMe: () => Promise<void>;   // ✅ added
+  ready: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(JSON.parse(localStorage.getItem("user") || "null"));
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(
+    JSON.parse(localStorage.getItem("user") || "null")
+  );
+  const [token, setToken] = useState<string | null>(
+    localStorage.getItem("token")
+  );
+  const [ready, setReady] = useState(false);
 
+  // Manual login (useful for email/password)
   const login = (user: User, token?: string) => {
     setUser(user);
     if (token) {
@@ -39,52 +45,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await supabase.auth.signOut();
   };
 
+  // ✅ Refresh user/session from Supabase
+  const refreshMe = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      const sUser = data.session.user;
+      const authUser: User = {
+        name: sUser.user_metadata?.full_name || sUser.email,
+        email: sUser.email!,
+        picture: sUser.user_metadata?.avatar_url,
+      };
+      setUser(authUser);
+      setToken(data.session.access_token);
+      localStorage.setItem("user", JSON.stringify(authUser));
+      localStorage.setItem("token", data.session.access_token);
+    } else {
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+    }
+  };
+
+  // 🔑 Sync Supabase auth state globally
   useEffect(() => {
-    const getSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        const sUser = data.session.user;
-        const authUser: User = {
-          name: sUser.user_metadata?.full_name || sUser.email!,
-          email: sUser.email!,
-          picture: sUser.user_metadata?.avatar_url,
-        };
-        setUser(authUser);
-        setToken(data.session.access_token);
-        localStorage.setItem("user", JSON.stringify(authUser));
-        localStorage.setItem("token", data.session.access_token);
+    // Check current session on mount and then mark ready
+    (async () => {
+      await refreshMe();
+      setReady(true);
+    })();
+    
+    
+    // Listen for auth changes (Google, email, etc.)
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_IN" && session) {
+          const sUser = session.user;
+          const authUser: User = {
+            name: sUser.user_metadata?.full_name || sUser.email,
+            email: sUser.email!,
+            picture: sUser.user_metadata?.avatar_url,
+          };
+          setUser(authUser);
+          setToken(session.access_token);
+          localStorage.setItem("user", JSON.stringify(authUser));
+          localStorage.setItem("token", session.access_token);
+        } else if (event === "SIGNED_OUT") {
+          setUser(null);
+          setToken(null);
+          localStorage.removeItem("user");
+          localStorage.removeItem("token");
+        }
       }
-      setLoading(false);
+    );
+
+    return () => {
+      subscription?.subscription.unsubscribe();
     };
-
-    getSession();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        const sUser = session.user;
-        const authUser: User = {
-          name: sUser.user_metadata?.full_name || sUser.email!,
-          email: sUser.email!,
-          picture: sUser.user_metadata?.avatar_url,
-        };
-        setUser(authUser);
-        setToken(session.access_token);
-        localStorage.setItem("user", JSON.stringify(authUser));
-        localStorage.setItem("token", session.access_token);
-      } else {
-        setUser(null);
-        setToken(null);
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-      }
-      setLoading(false);
-    });
-
-    return () => subscription?.subscription.unsubscribe();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, refreshMe, ready }}>
       {children}
     </AuthContext.Provider>
   );

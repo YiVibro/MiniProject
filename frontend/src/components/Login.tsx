@@ -24,7 +24,7 @@ const Login = () => {
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
-            // Google doesn’t fully separate login/signup,
+            // Google doesn't fully separate login/signup,
             // but "consent" forces asking permissions again on signup
             prompt: isSignUp ? "consent" : "select_account",
           },
@@ -33,9 +33,11 @@ const Login = () => {
 
       if (error) {
         console.error("Google auth failed:", error.message);
+        alert(`Google authentication failed: ${error.message}`);
       }
     } catch (err) {
       console.error("Unexpected Google auth error:", err);
+      alert(`Unexpected error during Google authentication: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 

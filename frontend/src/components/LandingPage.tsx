@@ -10,6 +10,8 @@ import { FcGoogle } from "react-icons/fc";
 import { motion } from "framer-motion";
 import { supabase } from "../lib/supabaseClient";
 import { Menu,X } from "lucide-react"; 
+import { useAuth } from "../store/AuthContext.tsx";
+import { useNavigate } from "react-router-dom";
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -22,7 +24,8 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
   const [highlightAuth, setHighlightAuth] = useState(false);
   const authCardRef = useRef<HTMLDivElement>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  // Form state
+  const { login }= useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -42,9 +45,21 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
 
   // Scroll helper
   const handleScrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  };
+  const el = document.getElementById(id);
+  if (el) {
+    const header = document.querySelector('header');
+    const headerHeight = header ? header.offsetHeight : 0;
+
+    const elementPosition = el.getBoundingClientRect().top + window.scrollY;
+    const offsetPosition = elementPosition - headerHeight - 20; // Added a little extra for spacing
+    
+    // Scroll to the new position
+    window.scrollTo({
+      top: offsetPosition,
+      behavior: 'smooth'
+    });
+  }
+};
 
   // Click outside auth card
   useEffect(() => {
@@ -73,7 +88,6 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
       }, 1500);
     }
   };
-
   // OAuth
   const handleOAuth = async (provider: "google") => {
     try {
@@ -141,7 +155,7 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
         </div>
       </header>
 
-      {/* Mobile Menu Content (Side-Sliding) */}
+      {/* Mobile Menu Content */}
       <div className={`fixed top-0 right-0 z-40 h-full w-64 transition-transform transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0" : "translate-x-full"} ${dark ? "bg-gray-900" : "bg-white"} shadow-xl lg:hidden`}>
         <div className="flex flex-col items-start gap-8 pt-20 px-6">
           <button className={`text-xl font-bold ${dark ? "text-gray-200" : "text-gray-800"} hover:underline`} onClick={() => { handleScrollTo("about"); setIsMobileMenuOpen(false); }}>About</button>
@@ -151,7 +165,7 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
       </div>
 
       {/* Main */}
-      <main className="flex-grow w-full px-6 py-12 max-w-[1400px] mx-auto mt-[64px]">
+      <main className="flex-grow w-full px-6 py-12 max-w-[1400px] mx-auto pt-[64px]">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center px-4 md:px-6" id="about">
           {/* Hero Section */}
           <motion.div className={`${dark ? "text-white" : "text-gray-900"} space-y-8`} initial="hidden" animate="visible" variants={fadeUp}>

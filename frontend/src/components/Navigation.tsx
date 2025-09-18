@@ -1,8 +1,10 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Brain, Users, MessageCircle, BarChart3, LogOut, SunMoon, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import studysparkLogo from "@/assets/studyspark-logo.png";
+import { useState } from "react";
+import { useAuth } from "../store/AuthContext";
 
 interface NavigationProps {
   activeTab: string;
@@ -13,14 +15,8 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
   const [isDark, setIsDark] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const toggleTheme = () => {
-    setIsDark(!isDark);
-    if (!isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  };
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -30,9 +26,25 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
     { id: "workshops", label: "Workshops", icon: Users },
   ];
 
+  const toggleTheme = () => {
+    setIsDark(!isDark);
+    if (!isDark) document.documentElement.classList.add("dark");
+    else document.documentElement.classList.remove("dark");
+  };
+
+  const handleTabClick = (tabId: string) => {
+    onTabChange(tabId);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/");
+  };
+
   return (
     <>
-      <nav className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white/80 dark:bg-black backdrop-blur-md border-b border-border shadow-sm dark:shadow-[0_2px_10px_rgba(0,0,0,0.4)] transition-colors sticky top-0 z-50">
+      <nav className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white/80 dark:bg-black backdrop-blur-md border-b shadow-sm sticky top-0 z-50">
         {/* Logo */}
         <div className="flex items-center gap-3">
           <img src={studysparkLogo} alt="StudySpark AI" className="w-8 h-8" />
@@ -41,7 +53,7 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
           </h1>
         </div>
 
-        {/* Desktop Navigation */}
+        {/* Desktop nav */}
         <div className="hidden sm:flex items-center gap-2">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -51,7 +63,7 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
                 key={item.id}
                 variant={isActive ? "default" : "ghost"}
                 size="sm"
-                onClick={() => onTabChange(item.id)}
+                onClick={() => handleTabClick(item.id)}
                 className={`gap-2 rounded-full px-4 transition-all duration-200 ${
                   isActive
                     ? "shadow-md ring-2 ring-primary/50 dark:ring-primary/60 text-foreground"
@@ -65,13 +77,17 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
           })}
         </div>
 
-        {/* Profile, Theme Toggle & Hamburger */}
+        {/* Profile, Theme, Hamburger */}
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={toggleTheme} className="rounded-full">
+            <SunMoon className="w-4 h-4" />
+          </Button>
+
           <Button
-            variant={activeTab === "profile" ? "default" : "outline"}
+            variant="outline"
             size="sm"
-            className="rounded-full transition-all duration-200 hover:shadow-md text-foreground dark:text-foreground/90 hover:bg-muted/60 dark:hover:bg-muted/50"
-            onClick={() => onTabChange("profile")}
+            onClick={() => handleTabClick("profile")}
+            className="rounded-full hidden sm:flex"
           >
             Profile
           </Button>
@@ -79,17 +95,17 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
           <Button
             variant="outline"
             size="sm"
-            className="rounded-full transition-all duration-200 hover:shadow-md text-foreground dark:text-foreground/90 hover:bg-muted/60 dark:hover:bg-muted/50"
-            onClick={toggleTheme}
+            onClick={handleLogout} // use new handler
+            className="rounded-full hidden sm:flex"
           >
-            <SunMoon className="w-4 h-4" />
+            <LogOut className="w-4 h-4" />
           </Button>
 
-          {/* Mobile Hamburger */}
+          {/* Mobile hamburger */}
           <Button
             variant="outline"
             size="sm"
-            className="sm:hidden rounded-full transition-all duration-200 text-foreground dark:text-gray-200 hover:bg-muted/60 dark:hover:bg-gray-800"
+            className="sm:hidden rounded-full"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -97,15 +113,15 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
         </div>
       </nav>
 
-      {/* Animated Mobile Menu */}
+      {/* Mobile menu */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="sm:hidden overflow-hidden bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-border shadow-md px-4 py-2 space-y-2 z-40"
+            transition={{ duration: 0.3 }}
+            className="sm:hidden overflow-hidden bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b shadow-md px-4 py-2 space-y-2"
           >
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -115,32 +131,34 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
                   key={item.id}
                   variant={isActive ? "default" : "ghost"}
                   size="sm"
-                  className="w-full justify-start gap-2 rounded-lg text-foreground dark:text-gray-200 hover:bg-muted/60 dark:hover:bg-gray-800"
-                  onClick={() => {
-                    onTabChange(item.id);
-                    setIsMobileMenuOpen(false);
-                  }}
+                  className="w-full justify-start gap-2 rounded-lg"
+                  onClick={() => handleTabClick(item.id)}
                 >
                   <Icon className="w-4 h-4" />
                   {item.label}
                 </Button>
               );
             })}
+
+            {/* Profile & Logout */}
+            <Button
+              size="sm"
+              className="w-full justify-start gap-2 rounded-lg"
+              onClick={() => handleTabClick("profile")}
+            >
+              Profile
+            </Button>
+
+            <Button
+              size="sm"
+              className="w-full justify-start gap-2 rounded-lg"
+              onClick={handleLogout} // redirect works on mobile too
+            >
+              <LogOut className="w-4 h-4" /> Logout
+            </Button>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Floating Logout Button */}
-      <Button
-        size="lg"
-        className="fixed bottom-6 right-6 z-50 rounded-full shadow-lg bg-blue-500 text-white dark:bg-blue-600 dark:text-white hover:bg-blue-600 dark:hover:bg-blue-700 transition-colors duration-200"
-        asChild
-      >
-        <a href="/">
-          <LogOut className="w-5 h-5 mr-2" />
-          Logout
-        </a>
-      </Button>
     </>
   );
 };
