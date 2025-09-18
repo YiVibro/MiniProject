@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (user: User, token?: string) => void;
-  logout: () =>Promise<void>;
+  logout: () =>Promise<;></;
   refreshMe: () => Promise<void>;   // ✅ added
   ready: boolean;
 }

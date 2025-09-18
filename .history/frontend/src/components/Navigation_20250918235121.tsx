@@ -39,6 +39,7 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
 
   const handleLogout = async () => {
     await logout();
+    setUser(null);
     navigate("/");
   };
 

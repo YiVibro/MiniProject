@@ -3,50 +3,64 @@ import { useAuth } from "../store/AuthContext.tsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "../lib/supabaseClient";
-
-interface GoogleUser {
-  name: string;
-  email: string;
-  picture: string;
-}
+import { useNavigate } from "react-router-dom";
 
 const Login = () => {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false); // ✅ track login/signup mode
+  const [isSignUp, setIsSignUp] = useState(false);
 
-  // ✅ Supabase Google OAuth flow
+  // ✅ Google OAuth
   const googleAuth = async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
-            // Google doesn't fully separate login/signup,
-            // but "consent" forces asking permissions again on signup
             prompt: isSignUp ? "consent" : "select_account",
           },
         },
       });
-
-      if (error) {
-        console.error("Google auth failed:", error.message);
-        alert(`Google authentication failed: ${error.message}`);
-      }
+      if (error) console.error("Google auth failed:", error.message);
     } catch (err) {
       console.error("Unexpected Google auth error:", err);
-      alert(`Unexpected error during Google authentication: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
-  // Email/password login or signup (stub for now)
-  const handleEmailAuth = (e: React.FormEvent) => {
+  // ✅ Email/password auth
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log(isSignUp ? "Signup" : "Login", { email, password });
-    // TODO: Replace with backend auth call
-    login({ name: "User", email, picture: "" });
+    try {
+      let result;
+      if (isSignUp) {
+        result = await supabase.auth.signUp({ email, password });
+      } else {
+        result = await supabase.auth.signInWithPassword({ email, password });
+      }
+
+      if (result.error) {
+        console.error("Auth error:", result.error.message);
+        return;
+      }
+
+      if (result.data.session) {
+        const sUser = result.data.session.user;
+        login(
+          {
+            name: sUser.user_metadata?.full_name || sUser.email!,
+            email: sUser.email!,
+            picture: sUser.user_metadata?.avatar_url,
+          },
+          result.data.session.access_token
+        );
+        navigate("/dashboard", { replace: true }); // ✅ direct to dashboard
+      }
+    } catch (err) {
+      console.error("Unexpected auth error:", err);
+    }
   };
 
   return (
@@ -57,7 +71,6 @@ const Login = () => {
 
       {/* Auth card */}
       <div className="w-full max-w-md bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 text-center border border-white/20 relative z-10">
-        {/* Title */}
         <h1 className="text-4xl font-extrabold bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent mb-3">
           StudySpark
         </h1>
@@ -88,7 +101,6 @@ const Login = () => {
             {isSignUp ? "Sign Up" : "Sign In"}
           </Button>
         </form>
-          
 
         {/* Divider */}
         <div className="flex items-center my-6">
@@ -97,24 +109,24 @@ const Login = () => {
           <div className="flex-grow h-px bg-white/20"></div>
         </div>
 
-        {/* ✅ Google auth */}
+        {/* Google OAuth */}
         <Button
-  onClick={googleAuth}
-  className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium py-2 border border-white/30 shadow-lg transition-all duration-300"
->
-  <img
-    src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-    alt="Google"
-    className="w-5 h-5"
-  />
-  {isSignUp ? "Sign up with Google" : "Sign in with Google"}
-</Button>
+          onClick={googleAuth}
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium py-2 border border-white/30 shadow-lg transition-all duration-300"
+        >
+          <img
+            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+            alt="Google"
+            className="w-5 h-5"
+          />
+          {isSignUp ? "Sign up with Google" : "Sign in with Google"}
+        </Button>
 
-         
         {/* Footer toggle */}
         <p className="mt-6 text-sm text-gray-100">
           {isSignUp ? "Already have an account?" : "Don’t have an account?"}{" "}
-          <button type="button"
+          <button
+            type="button"
             onClick={() => setIsSignUp(!isSignUp)}
             className="text-green-400 hover:underline cursor-pointer"
           >

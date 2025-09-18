@@ -8,7 +8,6 @@ import { Profile } from "./Profile";
 import { CoursesPage } from "./CoursesPage";
 import { useAuth } from "../store/AuthContext";
 import { supabase } from "../lib/supabaseClient";
-import { Navigation } from "./Navigation";
 
 export const StudySparkApp = () => {
   const { user } = useAuth();
@@ -45,7 +44,7 @@ export const StudySparkApp = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+      Navigation activeTab={activeTab} onTabChange={setActiveTab} />
       <main>{renderContent()}</main>
     </div>
   );

@@ -73,21 +73,48 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
   }, []);
 
   // Form validation + submit
-  const handleAuth = () => {
+  const handleAuth = async() => {
     const newErrors: typeof errors = {};
     if (!email.includes("@")) newErrors.email = "Enter a valid email";
     if (password.length < 6) newErrors.password = "Password must be at least 6 characters";
     if (!isLogin && name.trim() === "") newErrors.name = "Name is required";
     setErrors(newErrors);
 
-    if (Object.keys(newErrors).length === 0) {
-      setLoading(true);
-      setTimeout(() => {
+    if (Object.keys(newErrors).length > 0) return; 
+    setLoading(true);
+    try {
+      let result;
+      if (isLogin) {
+        result = await supabase.auth.signInWithPassword({ email, password });
+      } else {
+        result = await supabase.auth.signUp({ email, password });
+      }
+
+      if (result.error) {
+        console.error("Auth error:", result.error.message);
         setLoading(false);
-        onLogin();
-      }, 1500);
+        return;
+      }
+
+      if (result.data.session) {
+        const sUser = result.data.session.user;
+        login(
+          {
+            name: sUser.user_metadata?.full_name || sUser.email!,
+            email: sUser.email!,
+            picture: sUser.user_metadata?.avatar_url,
+          },
+          result.data.session.access_token
+        );
+        navigate("/dashboard", { replace: true }); // ✅ direct dashboard
+      }
+    } catch (err) {
+      console.error("Unexpected auth error:", err);
+    } finally {
+      setLoading(false);
     }
   };
+
   // OAuth
   const handleOAuth = async (provider: "google") => {
     try {

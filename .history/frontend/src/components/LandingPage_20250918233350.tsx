@@ -14,7 +14,7 @@ import { useAuth } from "../store/AuthContext.tsx";
 import { useNavigate } from "react-router-dom";
 
 interface LandingPageProps {
-  onLogin: () => void;
+  onLogin: (email: string, password: string) => void;
 }
 
 export const LandingPage = ({ onLogin }: LandingPageProps) => {
@@ -73,7 +73,7 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
   }, []);
 
   // Form validation + submit
-  const handleAuth = () => {
+  const handleAuth = async() => {
     const newErrors: typeof errors = {};
     if (!email.includes("@")) newErrors.email = "Enter a valid email";
     if (password.length < 6) newErrors.password = "Password must be at least 6 characters";
@@ -88,6 +88,7 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
       }, 1500);
     }
   };
+
   // OAuth
   const handleOAuth = async (provider: "google") => {
     try {

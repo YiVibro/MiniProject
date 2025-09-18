@@ -39,7 +39,7 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
 
   const handleLogout = async () => {
     await logout();
-    navigate("/");
+    navigate("/"); // redirect to landing page
   };
 
   return (

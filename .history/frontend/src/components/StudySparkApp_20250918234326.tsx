@@ -9,7 +9,6 @@ import { CoursesPage } from "./CoursesPage";
 import { useAuth } from "../store/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { Navigation } from "./Navigation";
-
 export const StudySparkApp = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");

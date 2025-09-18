@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LandingPage } from "./LandingPage";
+import { Navigation } from "./Navigation";
 import { Dashboard } from "./Dashboard";
 import { AIChatInterface } from "./AIChatInterface";
 import { NotesSection } from "./NotesSection";
@@ -8,18 +9,24 @@ import { Profile } from "./Profile";
 import { CoursesPage } from "./CoursesPage";
 import { useAuth } from "../store/AuthContext";
 import { supabase } from "../lib/supabaseClient";
-import { Navigation } from "./Navigation";
 
 export const StudySparkApp = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
   // Login callback
-   const handleLogin = () => {
-    setIsLoggedIn(true);
+  const handleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google", // you can add "github" or other providers
+      options: {
+        redirectTo: window.location.origin + "/dashboard" // after login redirect
+      }
+    });
+    if (error) console.error("Login error:", error.message);
   };
 
-  if (!isLoggedIn) {
+  // Show landing page if user is not logged in
+  if (!user) {
     return <LandingPage onLogin={handleLogin} />;
   }
 
@@ -45,7 +52,6 @@ export const StudySparkApp = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
       <main>{renderContent()}</main>
     </div>
   );
