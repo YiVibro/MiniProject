@@ -24,7 +24,7 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
   const [highlightAuth, setHighlightAuth] = useState(false);
   const authCardRef = useRef<HTMLDivElement>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { login }= useAuth();
+  const { loginWithEmail, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -73,21 +73,40 @@ export const LandingPage = ({ onLogin }: LandingPageProps) => {
   }, []);
 
   // Form validation + submit
-  const handleAuth = () => {
-    const newErrors: typeof errors = {};
-    if (!email.includes("@")) newErrors.email = "Enter a valid email";
-    if (password.length < 6) newErrors.password = "Password must be at least 6 characters";
-    if (!isLogin && name.trim() === "") newErrors.name = "Name is required";
-    setErrors(newErrors);
+  const handleAuth = async () => {
+  const newErrors: typeof errors = {};
+  if (!email.includes("@")) newErrors.email = "Enter a valid email";
+  if (password.length < 6) newErrors.password = "Password must be at least 6 characters";
+  if (!isLogin && name.trim() === "") newErrors.name = "Name is required";
+  setErrors(newErrors);
 
-    if (Object.keys(newErrors).length === 0) {
-      setLoading(true);
-      setTimeout(() => {
-        setLoading(false);
-        onLogin();
-      }, 1500);
+  if (Object.keys(newErrors).length > 0) return;
+
+  setLoading(true);
+
+  try {
+    if (isLogin) {
+      // 🔑 Email login
+      await loginWithEmail(email, password);
+      navigate("/dashboard");
+    } else {
+      // 🔑 Supabase signup
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: name } },
+      });
+      if (error) throw error;
+      alert("Signup successful! Please check your email to confirm.");
     }
-  };
+  } catch (err: any) {
+    console.error("Auth error:", err);
+    setErrors({ email: err.message || "Authentication failed" });
+  } finally {
+    setLoading(false);
+  }
+};
+
   // OAuth
   const handleOAuth = async (provider: "google") => {
     try {

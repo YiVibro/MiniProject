@@ -62,8 +62,12 @@ export const Profile = () => {
   };
 
   return (
-    <motion.div className="p-4 sm:p-6 space-y-6 max-w-6xl mx-auto" initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 }}}}>
-      
+    <motion.div
+  className="min-h-screen w-full bg-background text-foreground flex flex-col p-4 sm:p-6"
+  initial="hidden"
+  animate="visible"
+  variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 }}}}>
+
       {/* Header */}
       <motion.div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 sm:gap-0" variants={cardVariants}>
         <div>

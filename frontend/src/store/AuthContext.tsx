@@ -1,118 +1,91 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { supabase } from "../lib/supabaseClient"; 
+import { supabase } from "../lib/supabaseClient";
 
 interface User {
-  name: string;
-  email: string;
+  id: string;
+  email?: string;
+  name?: string;
   picture?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
-  login: (user: User, token?: string) => void;
-  logout: () =>Promise<void>;
-  refreshMe: () => Promise<void>;   // ✅ added
   ready: boolean;
+  loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  ready: false,
+  loginWithGoogle: async () => {},
+  loginWithEmail: async () => {},
+  logout: async () => {},
+});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(
-    JSON.parse(localStorage.getItem("user") || "null")
-  );
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token")
-  );
+  const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Manual login (useful for email/password)
-  const login = (user: User, token?: string) => {
-    setUser(user);
-    if (token) {
-      setToken(token);
-      localStorage.setItem("token", token);
-    }
-    localStorage.setItem("user", JSON.stringify(user));
-  };
-
-  const logout = async () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    await supabase.auth.signOut();
-  };
-
-  // ✅ Refresh user/session from Supabase
-  const refreshMe = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      const sUser = data.session.user;
-      const authUser: User = {
-        name: sUser.user_metadata?.full_name || sUser.email,
-        email: sUser.email!,
-        picture: sUser.user_metadata?.avatar_url,
-      };
-      setUser(authUser);
-      setToken(data.session.access_token);
-      localStorage.setItem("user", JSON.stringify(authUser));
-      localStorage.setItem("token", data.session.access_token);
-    } else {
-      setUser(null);
-      setToken(null);
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
-    }
-  };
-
-  // 🔑 Sync Supabase auth state globally
   useEffect(() => {
-    // Check current session on mount and then mark ready
-    (async () => {
-      await refreshMe();
-      setReady(true);
-    })();
-    
-    
-    // Listen for auth changes (Google, email, etc.)
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          const sUser = session.user;
-          const authUser: User = {
-            name: sUser.user_metadata?.full_name || sUser.email,
-            email: sUser.email!,
-            picture: sUser.user_metadata?.avatar_url,
-          };
-          setUser(authUser);
-          setToken(session.access_token);
-          localStorage.setItem("user", JSON.stringify(authUser));
-          localStorage.setItem("token", session.access_token);
-        } else if (event === "SIGNED_OUT") {
-          setUser(null);
-          setToken(null);
-          localStorage.removeItem("user");
-          localStorage.removeItem("token");
-        }
+    // 1️⃣ Initial session check
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        console.debug("[AuthContext] Initial session found:", session.user.email);
+      } else {
+        console.debug("[AuthContext] No initial session");
       }
-    );
+      setReady(true);
+    };
+
+    init();
+
+    // 2️⃣ Listen for auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        console.debug("[AuthContext] onAuthStateChange: SIGNED_IN", session.user.email);
+      } else {
+        setUser(null);
+        console.debug("[AuthContext] onAuthStateChange: SIGNED_OUT");
+      }
+    });
 
     return () => {
-      subscription?.subscription.unsubscribe();
+      listener.subscription.unsubscribe();
     };
   }, []);
 
+  // 3️⃣ Google login
+  const loginWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) console.error("[AuthContext] loginWithGoogle error:", error.message);
+  };
+
+  // 4️⃣ Email/password login
+  const loginWithEmail = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (data.user) setUser(data.user);
+  };
+
+  // 5️⃣ Logout
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, refreshMe, ready }}>
+    <AuthContext.Provider value={{ user, ready, loginWithGoogle, loginWithEmail, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
-};
+export const useAuth = () => useContext(AuthContext);

@@ -1,9 +1,9 @@
-import { Button } from "@/components/ui/button";
-import { BookOpen, Brain, Users, MessageCircle, BarChart3, LogOut, SunMoon, Menu, X } from "lucide-react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { BookOpen, Brain, Users, MessageCircle, BarChart3, LogOut, Sun, Moon, Menu, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import studysparkLogo from "@/assets/studyspark-logo.png";
-import { useState } from "react";
 import { useAuth } from "../store/AuthContext";
 
 interface NavigationProps {
@@ -19,22 +19,43 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
   const navigate = useNavigate();
 
   const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-    { id: "courses", label: "My Courses", icon: BookOpen },
-    { id: "ai-chat", label: "AI Tutor", icon: Brain },
-    { id: "notes", label: "Notes", icon: MessageCircle },
-    { id: "workshops", label: "Workshops", icon: Users },
+    { id: "dashboard", label: "Dashboard", icon: BarChart3, path: "/dashboard" },
+    { id: "courses", label: "My Courses", icon: BookOpen, path: "/courses" },
+    { id: "ai-chat", label: "AI Tutor", icon: Brain, path: "/ai-chat" },
+    { id: "notes", label: "Notes", icon: MessageCircle, path: "/notes" },
+    { id: "workshops", label: "Workshops", icon: Users, path: "/workshops" },
   ];
 
+  // Initialize theme from localStorage or system preference
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+    if (storedTheme === "dark" || (!storedTheme && prefersDark)) {
+      document.documentElement.classList.add("dark");
+      setIsDark(true);
+    } else {
+      document.documentElement.classList.remove("dark");
+      setIsDark(false);
+    }
+  }, []);
+
   const toggleTheme = () => {
-    setIsDark(!isDark);
-    if (!isDark) document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
+    if (isDark) {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+      setIsDark(false);
+    } else {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+      setIsDark(true);
+    }
   };
 
-  const handleTabClick = (tabId: string) => {
+  const handleTabClick = (tabId: string, path?: string) => {
     onTabChange(tabId);
     setIsMobileMenuOpen(false);
+    if (path) navigate(path);
   };
 
   const handleLogout = async () => {
@@ -45,7 +66,6 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
   return (
     <>
       <nav className="flex items-center justify-between px-4 sm:px-6 py-3 bg-white/80 dark:bg-black backdrop-blur-md border-b shadow-sm sticky top-0 z-50">
-        {/* Logo */}
         <div className="flex items-center gap-3">
           <img src={studysparkLogo} alt="StudySpark AI" className="w-8 h-8" />
           <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -63,7 +83,7 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
                 key={item.id}
                 variant={isActive ? "default" : "ghost"}
                 size="sm"
-                onClick={() => handleTabClick(item.id)}
+                onClick={() => handleTabClick(item.id, item.path)}
                 className={`gap-2 rounded-full px-4 transition-all duration-200 ${
                   isActive
                     ? "shadow-md ring-2 ring-primary/50 dark:ring-primary/60 text-foreground"
@@ -78,36 +98,26 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
         </div>
 
         {/* Profile, Theme, Hamburger */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+          {/* Theme toggle */}
           <Button variant="outline" size="sm" onClick={toggleTheme} className="rounded-full">
-            <SunMoon className="w-4 h-4" />
+            {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
           </Button>
 
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleTabClick("profile")}
+            onClick={() => handleTabClick("profile", "/profile")}
             className="rounded-full hidden sm:flex"
           >
             Profile
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLogout} // use new handler
-            className="rounded-full hidden sm:flex"
-          >
+          <Button variant="outline" size="sm" onClick={handleLogout} className="rounded-full hidden sm:flex">
             <LogOut className="w-4 h-4" />
           </Button>
 
-          {/* Mobile hamburger */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="sm:hidden rounded-full"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          >
+          <Button variant="outline" size="sm" className="sm:hidden rounded-full" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
         </div>
@@ -132,7 +142,7 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
                   variant={isActive ? "default" : "ghost"}
                   size="sm"
                   className="w-full justify-start gap-2 rounded-lg"
-                  onClick={() => handleTabClick(item.id)}
+                  onClick={() => handleTabClick(item.id, item.path)}
                 >
                   <Icon className="w-4 h-4" />
                   {item.label}
@@ -140,20 +150,11 @@ export const Navigation = ({ activeTab, onTabChange }: NavigationProps) => {
               );
             })}
 
-            {/* Profile & Logout */}
-            <Button
-              size="sm"
-              className="w-full justify-start gap-2 rounded-lg"
-              onClick={() => handleTabClick("profile")}
-            >
+            <Button size="sm" className="w-full justify-start gap-2 rounded-lg" onClick={() => handleTabClick("profile", "/profile")}>
               Profile
             </Button>
 
-            <Button
-              size="sm"
-              className="w-full justify-start gap-2 rounded-lg"
-              onClick={handleLogout} // redirect works on mobile too
-            >
+            <Button size="sm" className="w-full justify-start gap-2 rounded-lg" onClick={handleLogout}>
               <LogOut className="w-4 h-4" /> Logout
             </Button>
           </motion.div>

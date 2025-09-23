@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,8 +10,15 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import TextEditor from "./pages/TextEditor";
 import AuthCallback from "./pages/AuthCallback";
+import Signup from "./pages/Signup";
+import Login from "./pages/Login";
 
 import { Dashboard } from "./components/Dashboard";
+import { AIChatInterface } from "./components/AIChatInterface";
+import { CoursesPage } from "./components/CoursesPage";
+import { NotesSection } from "./components/NotesSection";
+import { Workshops } from "./components/Workshops";
+import { Profile } from "./components/Profile";
 import { Navigation } from "./components/Navigation";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 
@@ -19,11 +26,13 @@ const queryClient = new QueryClient();
 
 // ✅ Protected route wrapper
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
-  const { user, token } = useAuth();
+  const { user, ready } = useAuth();
   const location = useLocation();
 
-  if (!user || !token) {
-    return <Navigate to="/" state={{ from: location }} replace />;
+  if (!ready) return null;
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;
@@ -31,7 +40,34 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 
 // ✅ Layout with Navigation and activeTab state
 const Layout = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  // Sync activeTab with current path
+  useEffect(() => {
+    switch (location.pathname) {
+      case "/dashboard":
+        setActiveTab("dashboard");
+        break;
+      case "/courses":
+        setActiveTab("courses");
+        break;
+      case "/ai-chat":
+        setActiveTab("ai-chat");
+        break;
+      case "/notes":
+        setActiveTab("notes");
+        break;
+      case "/workshops":
+        setActiveTab("workshops");
+        break;
+      case "/profile":
+        setActiveTab("profile");
+        break;
+      default:
+        setActiveTab("dashboard");
+    }
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -55,10 +91,14 @@ const App = () => {
                 {/* Landing page */}
                 <Route path="/" element={<Index />} />
 
+                {/* Login & Signup */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+
                 {/* OAuth callback */}
                 <Route path="/auth/callback" element={<AuthCallback />} />
 
-                {/* Protected Dashboard */}
+                {/* Protected pages */}
                 <Route
                   path="/dashboard"
                   element={
@@ -69,8 +109,58 @@ const App = () => {
                     </RequireAuth>
                   }
                 />
+                <Route
+                  path="/courses"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <CoursesPage />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/ai-chat"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <AIChatInterface />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/notes"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <NotesSection />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/workshops"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <Workshops />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <Profile />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
 
-                {/* Protected Editor */}
+                {/* Editor */}
                 <Route
                   path="/editor"
                   element={
