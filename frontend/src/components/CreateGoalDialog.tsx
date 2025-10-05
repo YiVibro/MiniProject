@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -7,14 +7,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { CalendarIcon, Upload, X, Loader2, Sparkles } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "../store/AuthContext";
 
 interface CreateGoalDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onGoalCreated: () => void;
 }
 
-export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) => {
+export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGoalDialogProps) => {
+  const { user } = useAuth();
   const [goalData, setGoalData] = useState({
     title: "",
     subject: "",
@@ -24,7 +31,8 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
     learningStyle: "",
     difficulty: "",
     weeks: 4,
-    focus: "balanced"
+    focus: "balanced",
+    targetDate: undefined as Date | undefined,
   });
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,18 +83,57 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
   };
 
   const handleCreateGoal = async () => {
+    if (!user) {
+      alert("Error: You must be logged in to create a goal. Please try logging in again.");
+      return;
+    }
+    
     if (!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty) {
       alert("Please fill in all required fields.");
       return;
     }
 
     setIsLoading(true);
-    
+
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // 1. Find or create the category in Supabase
+      let { data: category, error: categoryError } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('name', goalData.subject)
+        .single();
+
+      if (categoryError && categoryError.code !== 'PGRST116') { // PGRST116: row not found
+        throw categoryError;
+      }
+
+      if (!category) {
+        const { data: newCategory, error: newCategoryError } = await supabase
+          .from('categories')
+          .insert({ name: goalData.subject })
+          .select('id')
+          .single();
+        if (newCategoryError) throw newCategoryError;
+        category = newCategory;
+      }
+
+      // 2. Create the user progress record (goal) in Supabase
+      const { error: progressError } = await supabase.from('user_progress').insert({
+        user_id: user.id,
+        category_id: category.id,
+        course_name: goalData.title,
+      });
+
+      if (progressError) throw progressError;
+
+      // TODO: Here you would call the agent service if needed, for example:
+      // await agentService.createLearningPath(goalData);
+
+      console.log("Goal created successfully in Supabase!");
       alert(`Goal created successfully! Your ${goalData.subject} learning path has been created.`);
+
+      onGoalCreated(); // Refresh the dashboard
+      onOpenChange(false); // Close the dialog
       
       // Reset form
       setGoalData({
@@ -98,14 +145,14 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
         learningStyle: "",
         difficulty: "",
         weeks: 4,
-        focus: "balanced"
+        focus: "balanced",
+        targetDate: undefined,
       });
       setUploadedFiles([]);
-      onOpenChange(false);
-      
-    } catch (error) {
-      console.error('Failed to create goal:', error);
-      alert("Failed to create learning goal. Please try again.");
+
+    } catch (error: any) {
+      console.error("Error creating goal:", error.message);
+      alert(`Error creating goal: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -121,7 +168,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="p-6 space-y-6">
           <div className="space-y-2">
             <Label htmlFor="title">Goal Title</Label>
             <Input
@@ -153,35 +200,62 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                 <div
                   key={type.value}
                   className={cn(
-                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
-                    goalData.goalType === type.value 
-                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
-                      : "border-gray-300"
+                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-lg",
+                    goalData.goalType === type.value
+                      ? "border-primary bg-primary/10 shadow-md"
+                      : "hover:bg-muted/50"
                   )}
                   onClick={() => setGoalData({...goalData, goalType: type.value})}
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">{type.label}</h4>
-                      <p className="text-sm text-gray-500">{type.description}</p>
+                      <p className="text-sm text-muted-foreground">{type.description}</p>
                     </div>
                     {goalData.goalType === type.value && (
-                      <Badge variant="default">Selected</Badge>
+                      <Badge>Selected</Badge>
                     )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-
-          <div className="space-y-2">
-            <Label>Study Duration (hours/week)</Label>
-            <Input
-              type="number"
-              placeholder="e.g., 5"
-              value={goalData.duration}
-              onChange={(e) => setGoalData({...goalData, duration: e.target.value})}
-            />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Study Duration (hours/week)</Label>
+              <Input
+                type="number"
+                placeholder="e.g., 5"
+                value={goalData.duration}
+                onChange={(e) => setGoalData({...goalData, duration: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Target Completion Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !goalData.targetDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {goalData.targetDate ? format(goalData.targetDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={goalData.targetDate}
+                    onSelect={(date) => setGoalData({ ...goalData, targetDate: date as Date | undefined })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -205,7 +279,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                   className={cn(
                     "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
                     goalData.learningStyle === style.value 
-                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
+                      ? "border-primary bg-primary/10 shadow-md" 
                       : "border-gray-300"
                   )}
                   onClick={() => setGoalData({...goalData, learningStyle: style.value})}
@@ -216,7 +290,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                       <p className="text-sm text-gray-500">{style.description}</p>
                     </div>
                     {goalData.learningStyle === style.value && (
-                      <Badge variant="default">Selected</Badge>
+                      <Badge>Selected</Badge>
                     )}
                   </div>
                 </div>
@@ -234,7 +308,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                   className={cn(
                     "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
                     goalData.difficulty === level.value 
-                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
+                      ? "border-primary bg-primary/10 shadow-md" 
                       : "border-gray-300"
                   )}
                   onClick={() => setGoalData({...goalData, difficulty: level.value})}
@@ -245,7 +319,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                       <p className="text-sm text-gray-500">{level.description}</p>
                     </div>
                     {goalData.difficulty === level.value && (
-                      <Badge variant="default">Selected</Badge>
+                      <Badge>Selected</Badge>
                     )}
                   </div>
                 </div>
@@ -263,7 +337,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                   className={cn(
                     "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
                     goalData.focus === focus.value 
-                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
+                      ? "border-primary bg-primary/10 shadow-md" 
                       : "border-gray-300"
                   )}
                   onClick={() => setGoalData({...goalData, focus: focus.value})}
@@ -274,7 +348,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                       <p className="text-sm text-gray-500">{focus.description}</p>
                     </div>
                     {goalData.focus === focus.value && (
-                      <Badge variant="default">Selected</Badge>
+                      <Badge>Selected</Badge>
                     )}
                   </div>
                 </div>
@@ -301,9 +375,9 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
 
           <div className="space-y-3">
             <Label>Upload Study Materials (Optional)</Label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center transition-all hover:shadow-md">
-              <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm text-gray-500 mb-2">Upload PDFs, notes, or other study materials</p>
+            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50">
+              <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground mb-2">Upload PDFs, notes, or other study materials</p>
               <input
                 type="file"
                 multiple

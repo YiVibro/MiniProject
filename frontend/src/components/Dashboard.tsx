@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,16 +7,51 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Brain } from "lucide-react";
 import { CreateGoalDialog } from "./CreateGoalDialog";
 import { useAuth } from "../store/AuthContext";
+import { supabase } from "../lib/supabaseClient";
 
 export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
-  const { user, logout } = useAuth(); 
+  const { user } = useAuth();
+  const [courses, setCourses] = useState<any[]>([]);
 
-  const recentCourses = [
-    { id: 1, title: "Advanced Mathematics", subject: "Mathematics", progress: 75, goalType: "exam prep", dueDate: "2024-02-15", totalLessons: 12, completedLessons: 9 },
-    { id: 2, title: "Physics Fundamentals", subject: "Physics", progress: 45, goalType: "new learning", dueDate: "2024-03-01", totalLessons: 16, completedLessons: 7 },
-    { id: 3, title: "Chemistry Review", subject: "Chemistry", progress: 90, goalType: "revision", dueDate: "2024-01-30", totalLessons: 8, completedLessons: 7 },
-  ];
+  useEffect(() => {
+    if (user) {
+      fetchCourses();
+    }
+  }, [user]);
+
+  const fetchCourses = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('user_progress')
+        .select(`
+          id,
+          course_name,
+          progress_percent,
+          categories (name)
+        `)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      const formattedCourses = data.map((course: any) => ({
+        id: course.id,
+        title: course.course_name,
+        subject: course.categories.name,
+        progress: course.progress_percent,
+        goalType: "new learning", // You might want to store this in the DB
+        dueDate: "N/A", // You might want to store this in the DB
+        totalLessons: 10, // You might want to store this in the DB
+        completedLessons: Math.round((course.progress_percent / 100) * 10), // Example calculation
+      }));
+
+      setCourses(formattedCourses);
+    } catch (error: any) {
+      console.error("Error fetching courses:", error.message);
+    }
+  };
 
   const todayTasks = [
     { task: "Complete Calculus Chapter 5", subject: "Mathematics", urgent: true },
@@ -45,7 +80,7 @@ export const Dashboard = () => {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold">Welcome back, Student!</h1>
+          <h1 className="text-3xl font-bold">Welcome back, {user?.user_metadata.full_name || 'Student'}!</h1>
           <p className="text-muted-foreground mt-1">
             Ready to continue your learning journey?
           </p>
@@ -63,7 +98,7 @@ export const Dashboard = () => {
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { icon: BookOpen, label: "Active Courses", value: "12", color: "from-blue-500 to-blue-700" },
+          { icon: BookOpen, label: "Active Courses", value: courses.length, color: "from-blue-500 to-blue-700" },
           { icon: Target, label: "Goals Achieved", value: "8", color: "from-green-500 to-green-700" },
           { icon: TrendingUp, label: "Avg Progress", value: "87%", color: "from-purple-500 to-purple-700" },
           { icon: Clock, label: "Study Streak", value: "24h", color: "from-orange-500 to-orange-700" },
@@ -110,7 +145,7 @@ export const Dashboard = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {recentCourses.map((course, index) => (
+              {courses.map((course, index) => (
                 <motion.div
                   key={course.id}
                   className={innerCardClasses}
@@ -146,6 +181,7 @@ export const Dashboard = () => {
                     variant="outline"
                     size="sm"
                     className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
+                    onClick={() => alert(`Continuing course: ${course.title}`)} // Placeholder action
                   >
                     Continue Learning
                   </Button>

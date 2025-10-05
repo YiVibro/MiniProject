@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { supabase } from "../lib/supabaseClient";
 
 interface User {
+  user_metadata: any;
   id: string;
   email?: string;
   name?: string;

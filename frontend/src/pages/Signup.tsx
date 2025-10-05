@@ -14,20 +14,33 @@ const Signup = () => {
     setMsg("");
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // 1. Sign up the user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: name }, // store name in user_metadata
+          data: { full_name: name }, // Pass name to metadata
         },
       });
 
-      if (error) {
-        setMsg(error.message);
+      if (authError) {
+        setMsg(authError.message);
         return;
       }
 
-      if (data.user) {
+      if (authData.user) {
+        // 2. Insert the new user into the public.users table
+        const { error: insertError } = await supabase.from('users').insert({
+          id: authData.user.id, // Use the user's ID from auth
+          email: email,
+          name: name,
+        });
+
+        if (insertError) {
+          setMsg(`Signup successful, but failed to create user profile: ${insertError.message}`);
+          return;
+        }
+
         setMsg("Signup successful! Please check your email to verify your account.");
 
         // Optional: redirect to login page after a few seconds
