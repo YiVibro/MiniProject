@@ -70,11 +70,12 @@ app.add_middleware(
 )
 
 # Import routers
-from app.routes import auth, oauth
+from app.routes import auth, oauth, agents
 
-# Include both routers
+# Include all routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
+app.include_router(agents.router, tags=["Agents"])
 
 @app.get("/")
 def root():

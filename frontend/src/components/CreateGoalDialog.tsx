@@ -1,15 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { CalendarIcon, Upload, X } from "lucide-react";
-import { format } from "date-fns";
+import { CalendarIcon, Upload, X, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CreateGoalDialogProps {
@@ -24,19 +21,45 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
     goalType: "",
     duration: "",
     description: "",
-    targetDate: undefined as Date | undefined,
+    learningStyle: "",
+    difficulty: "",
+    weeks: 4,
+    focus: "balanced"
   });
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const subjects = [
-    "Mathematics", "Physics", "Chemistry", "Biology", "Computer Science",
-    "History", "Literature", "Psychology", "Economics", "Philosophy"
+    "Python Programming", "JavaScript", "Machine Learning", "Web Development", 
+    "Data Science", "Computer Science", "Mathematics", "Physics", "Chemistry", "Biology"
   ];
 
   const goalTypes = [
     { value: "revision", label: "Revision", description: "Review previously learned material" },
     { value: "new_learning", label: "New Learning", description: "Learn completely new topics" },
     { value: "exam_prep", label: "Exam Preparation", description: "Focused preparation for upcoming exams" }
+  ];
+
+  const learningStyles = [
+    { value: "visual", label: "Visual", description: "Learn through diagrams, charts, and visual aids" },
+    { value: "auditory", label: "Auditory", description: "Learn through listening and verbal explanations" },
+    { value: "kinesthetic", label: "Kinesthetic", description: "Learn through hands-on activities and movement" },
+    { value: "analytical", label: "Analytical", description: "Learn through detailed analysis and logical structure" },
+    { value: "practical", label: "Practical", description: "Learn through real-world applications" },
+    { value: "balanced", label: "Balanced", description: "Mix of all learning styles" }
+  ];
+
+  const difficultyLevels = [
+    { value: "beginner", label: "Beginner", description: "New to the subject" },
+    { value: "intermediate", label: "Intermediate", description: "Some experience" },
+    { value: "advanced", label: "Advanced", description: "Experienced learner" }
+  ];
+
+  const focusTypes = [
+    { value: "theoretical", label: "Theory-focused", description: "Deep understanding of concepts" },
+    { value: "practical", label: "Practice-focused", description: "Hands-on exercises and projects" },
+    { value: "balanced", label: "Balanced", description: "Mix of theory and practice" },
+    { value: "project-based", label: "Project-based", description: "Build real-world projects" }
   ];
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,21 +74,42 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
     setUploadedFiles(uploadedFiles.filter(file => file !== fileName));
   };
 
-  const handleCreateGoal = () => {
-    console.log("Creating goal:", goalData, "Files:", uploadedFiles);
-    onOpenChange(false);
-    setGoalData({
-      title: "",
-      subject: "",
-      goalType: "",
-      duration: "",
-      description: "",
-      targetDate: undefined,
-    });
-    setUploadedFiles([]);
-  };
+  const handleCreateGoal = async () => {
+    if (!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty) {
+      alert("Please fill in all required fields.");
+      return;
+    }
 
-  const cardClasses = "bg-[rgba(30,30,35,0.75)] backdrop-blur-md border border-gray-700 shadow-lg rounded-2xl transition-all duration-300";
+    setIsLoading(true);
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      alert(`Goal created successfully! Your ${goalData.subject} learning path has been created.`);
+      
+      // Reset form
+      setGoalData({
+        title: "",
+        subject: "",
+        goalType: "",
+        duration: "",
+        description: "",
+        learningStyle: "",
+        difficulty: "",
+        weeks: 4,
+        focus: "balanced"
+      });
+      setUploadedFiles([]);
+      onOpenChange(false);
+      
+    } catch (error) {
+      console.error('Failed to create goal:', error);
+      alert("Failed to create learning goal. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -77,11 +121,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-screen 
-    bg-gradient-to-b from-gray-50 to-white text-gray-900
-    dark:from-[#0f0f11] dark:to-[#1a1a1f] dark:text-gray-100
-    p-6 space-y-6 transition-colors
-  ">
+        <div className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="title">Goal Title</Label>
             <Input
@@ -89,23 +129,16 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
               placeholder="e.g., Master Calculus Fundamentals"
               value={goalData.title}
               onChange={(e) => setGoalData({...goalData, title: e.target.value})}
-              className="bg-white text-gray-900 placeholder-gray-500 
-             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
-             focus:border-blue-500"
             />
           </div>
 
           <div className="space-y-2">
             <Label>Subject</Label>
             <Select value={goalData.subject} onValueChange={(value) => setGoalData({...goalData, subject: value})}>
-              <SelectTrigger className="bg-white text-gray-900 placeholder-gray-500 
-             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
-             focus:border-blue-500">
+              <SelectTrigger>
                 <SelectValue placeholder="Select a subject" />
               </SelectTrigger>
-              <SelectContent className="bg-white text-gray-900 placeholder-gray-500 
-             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
-             focus:border-blue-500">
+              <SelectContent>
                 {subjects.map((subject) => (
                   <SelectItem key={subject} value={subject}>{subject}</SelectItem>
                 ))}
@@ -120,17 +153,17 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                 <div
                   key={type.value}
                   className={cn(
-                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-xl hover:bg-gray-700/50",
+                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
                     goalData.goalType === type.value 
                       ? "border-blue-500 bg-blue-500/10 shadow-md" 
-                      : "border-gray-700"
+                      : "border-gray-300"
                   )}
                   onClick={() => setGoalData({...goalData, goalType: type.value})}
                 >
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">{type.label}</h4>
-                      <p className="text-sm text-gray-400">{type.description}</p>
+                      <p className="text-sm text-gray-500">{type.description}</p>
                     </div>
                     {goalData.goalType === type.value && (
                       <Badge variant="default">Selected</Badge>
@@ -141,45 +174,14 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Study Duration (hours/week)</Label>
-              <Input
-                type="number"
-                placeholder="e.g., 5"
-                value={goalData.duration}
-                onChange={(e) => setGoalData({...goalData, duration: e.target.value})}
-                className="bg-white text-gray-900 placeholder-gray-500 
-             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
-             focus:border-blue-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Target Completion Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal bg-white-800 text-gray-900 placeholder-gray-500 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400",
-                      !goalData.targetDate && "text-gray-400"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {goalData.targetDate ? format(goalData.targetDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-gray-800 text-white">
-                  <Calendar
-                    mode="single"
-                    selected={goalData.targetDate}
-                    onSelect={(date) => setGoalData({...goalData, targetDate: date})}
-                    initialFocus
-                    className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+          <div className="space-y-2">
+            <Label>Study Duration (hours/week)</Label>
+            <Input
+              type="number"
+              placeholder="e.g., 5"
+              value={goalData.duration}
+              onChange={(e) => setGoalData({...goalData, duration: e.target.value})}
+            />
           </div>
 
           <div className="space-y-2">
@@ -190,17 +192,118 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
               value={goalData.description}
               onChange={(e) => setGoalData({...goalData, description: e.target.value})}
               rows={3}
-              className="bg-white text-gray-900 placeholder-gray-500 
-             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
-             focus:border-blue-500"
             />
+          </div>
+
+          {/* Learning Style Selection */}
+          <div className="space-y-3">
+            <Label>Learning Style</Label>
+            <div className="grid gap-3">
+              {learningStyles.map((style) => (
+                <div
+                  key={style.value}
+                  className={cn(
+                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
+                    goalData.learningStyle === style.value 
+                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
+                      : "border-gray-300"
+                  )}
+                  onClick={() => setGoalData({...goalData, learningStyle: style.value})}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">{style.label}</h4>
+                      <p className="text-sm text-gray-500">{style.description}</p>
+                    </div>
+                    {goalData.learningStyle === style.value && (
+                      <Badge variant="default">Selected</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Difficulty Level Selection */}
+          <div className="space-y-3">
+            <Label>Difficulty Level</Label>
+            <div className="grid gap-3">
+              {difficultyLevels.map((level) => (
+                <div
+                  key={level.value}
+                  className={cn(
+                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
+                    goalData.difficulty === level.value 
+                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
+                      : "border-gray-300"
+                  )}
+                  onClick={() => setGoalData({...goalData, difficulty: level.value})}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">{level.label}</h4>
+                      <p className="text-sm text-gray-500">{level.description}</p>
+                    </div>
+                    {goalData.difficulty === level.value && (
+                      <Badge variant="default">Selected</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Course Focus Selection */}
+          <div className="space-y-3">
+            <Label>Course Focus</Label>
+            <div className="grid gap-3">
+              {focusTypes.map((focus) => (
+                <div
+                  key={focus.value}
+                  className={cn(
+                    "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
+                    goalData.focus === focus.value 
+                      ? "border-blue-500 bg-blue-500/10 shadow-md" 
+                      : "border-gray-300"
+                  )}
+                  onClick={() => setGoalData({...goalData, focus: focus.value})}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">{focus.label}</h4>
+                      <p className="text-sm text-gray-500">{focus.description}</p>
+                    </div>
+                    {goalData.focus === focus.value && (
+                      <Badge variant="default">Selected</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Course Duration in Weeks */}
+          <div className="space-y-2">
+            <Label>Course Duration (weeks)</Label>
+            <Select value={goalData.weeks.toString()} onValueChange={(value) => setGoalData({...goalData, weeks: parseInt(value)})}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select duration" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2 weeks (6 lessons)</SelectItem>
+                <SelectItem value="4">1 month (12 lessons)</SelectItem>
+                <SelectItem value="8">2 months (24 lessons)</SelectItem>
+                <SelectItem value="12">3 months (36 lessons)</SelectItem>
+                <SelectItem value="24">6 months (48 lessons)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-3">
             <Label>Upload Study Materials (Optional)</Label>
-            <div className="border-2 border-dashed border-gray-700 rounded-lg p-6 text-center transition-all hover:shadow-xl hover:bg-gray-700/50">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center transition-all hover:shadow-md">
               <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-              <p className="text-sm text-gray-400 mb-2">Upload PDFs, notes, or other study materials</p>
+              <p className="text-sm text-gray-500 mb-2">Upload PDFs, notes, or other study materials</p>
               <input
                 type="file"
                 multiple
@@ -209,7 +312,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                 className="hidden"
                 id="file-upload"
               />
-              <Button variant="outline" asChild className="bg-gray-800 text-white hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500">
+              <Button variant="outline" asChild>
                 <label htmlFor="file-upload" className="cursor-pointer">Choose Files</label>
               </Button>
             </div>
@@ -219,9 +322,7 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
                 <Label>Uploaded Files:</Label>
                 <div className="flex flex-wrap gap-2">
                   {uploadedFiles.map((fileName, index) => (
-                    <Badge key={index} variant="secondary" className="gap-1 bg-white text-gray-900 placeholder-gray-500 
-             dark:bg-gray-800 dark:text-white dark:placeholder-gray-400 
-             focus:border-blue-500">
+                    <Badge key={index} variant="secondary" className="gap-1">
                       {fileName}
                       <X className="w-3 h-3 cursor-pointer" onClick={() => removeFile(fileName)} />
                     </Badge>
@@ -232,15 +333,25 @@ export const CreateGoalDialog = ({ open, onOpenChange }: CreateGoalDialogProps) 
           </div>
 
           <div className="flex gap-3 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 bg-white-800 text-gray-900 dark:bg-gray-800 dark:text-white dark:placeholder-gray-400  focus:border-blue-500">
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancel
             </Button>
             <Button 
               onClick={handleCreateGoal} 
-              className="flex-1 bg-gray-800 text-white hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500"
-              disabled={!goalData.title || !goalData.subject || !goalData.goalType}
+              className="flex-1"
+              disabled={!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty || isLoading}
             >
-              Create Goal
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Create Goal
+                </>
+              )}
             </Button>
           </div>
         </div>
