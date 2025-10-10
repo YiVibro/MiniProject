@@ -1,267 +1,255 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Send, Brain, User, Lightbulb, BookOpen, Calculator } from "lucide-react";
+import { useState, useRef, useEffect } from 'react';
+import { Send, Loader2, BookOpen, Sparkles, RefreshCw } from 'lucide-react';
 
-interface Message {
-  id: string;
-  type: "user" | "ai";
+interface ChatMessage {
+  role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  suggestions?: string[];
+  isError?: boolean; // optional
 }
 
-export const AIChatInterface = () => {
-  const [messages, setMessages] = useState<Message[]>([
+
+const AIChatInterface = () => {
+  const [messages, setMessages] = useState<ChatMessage[]>([
     {
-      id: "1",
-      type: "ai",
-      content:
-        "Hello! I'm your AI tutor. I'm here to help you with your studies. What would you like to learn about today?",
-      timestamp: new Date(),
-      suggestions: [
-        "Explain quadratic equations",
-        "Help with physics problems",
-        "Create a study plan",
-        "Generate practice questions",
-      ],
-    },
+      role: 'assistant',
+      content: "Hi! I'm your adaptive AI tutor. What would you like to learn today? I can help you master any concept through personalized teaching.",
+      timestamp: new Date()
+    }
   ]);
-  const [newMessage, setNewMessage] = useState("");
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionContext, setSessionContext] = useState({
+    topic: null,
+    difficulty: 'medium',
+    correctStreak: 0,
+    strugglingCount: 0
+  });
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const quickActions = [
-    { icon: Calculator, label: "Math Help", prompt: "I need help with mathematics" },
-    { icon: BookOpen, label: "Study Plan", prompt: "Create a study plan for me" },
-    { icon: Lightbulb, label: "Explain Concept", prompt: "Explain a concept to me" },
-    { icon: Brain, label: "Quiz Me", prompt: "Create a quiz for me" },
-  ];
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: "user",
-      content: newMessage,
-      timestamp: new Date(),
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+  
+    // Properly typed user message
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: input.trim(),
+      timestamp: new Date()
     };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setNewMessage("");
-
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        type: "ai",
-        content: `I understand you're asking about "${newMessage}". Let me help you with that. This is a simulated response.`,
-        timestamp: new Date(),
-        suggestions: [
-          "Can you give me more examples?",
-          "I need practice problems",
-          "Explain it differently",
-          "What's the next topic?",
-        ],
+  
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+  
+    try {
+      const response = await fetch('http://localhost:8000/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: input.trim(),
+          conversationHistory: messages.slice(-10),
+          sessionContext
+        })
+      });
+  
+      if (!response.ok) throw new Error('Failed to get response from AI tutor');
+  
+      const data = await response.json();
+  
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: data.response,
+        timestamp: new Date()
       };
-      setMessages((prev) => [...prev, aiResponse]);
-    }, 1000);
+  
+      setMessages(prev => [...prev, assistantMessage]);
+  
+      if (data.updatedContext) {
+        setSessionContext(data.updatedContext);
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+  
+      const errorMessage: ChatMessage = {
+        role: "assistant",
+        content: "I apologize, but I'm having trouble connecting right now. Please try again in a moment.",
+        timestamp: new Date(),
+        isError: true
+      };
+  
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+  
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
-  const handleSuggestion = (suggestion: string) => {
-    setNewMessage(suggestion);
+  const resetChat = () => {
+    setMessages([
+      {
+        role: 'assistant',
+        content: "Let's start fresh! What would you like to learn today?",
+        timestamp: new Date()
+      }
+    ]);
+    setSessionContext({
+      topic: null,
+      difficulty: 'medium',
+      correctStreak: 0,
+      strugglingCount: 0
+    });
   };
-
-  const handleQuickAction = (prompt: string) => {
-    setNewMessage(prompt);
-  };
-
-  const fadeInUp = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 },
-  };
-
-  const cardClasses = "bg-card border border-border shadow-lg hover:shadow-xl rounded-2xl transition-all duration-300";
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans p-6 space-y-6 transition-colors">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Header */}
-      <motion.div initial="hidden" animate="visible" variants={fadeInUp} transition={{ duration: 0.6 }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Brain className="w-8 h-8 text-primary" />
-              AI Tutor Chat
-            </h1>
-            <p className="text-muted-foreground">Get instant help with your studies</p>
+      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-700 px-6 py-4 shadow-sm">
+        <div className="flex items-center justify-between max-w-5xl mx-auto">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl">
+              <Sparkles className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                AI Tutor
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Adaptive Learning Assistant
+              </p>
+            </div>
           </div>
+          <button
+            onClick={resetChat}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            New Session
+          </button>
         </div>
-      </motion.div>
+      </div>
 
-      <div className="grid lg:grid-cols-4 gap-6">
-        {/* Chat Interface */}
-        <motion.div initial="hidden" animate="visible" variants={fadeInUp} transition={{ duration: 0.6 }} className="lg:col-span-3">
-          <Card className={cardClasses + " h-[600px] flex flex-col"}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-muted-foreground">AI Tutor is online</span>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col gap-4">
-              <ScrollArea className="flex-1 pr-4 scrollbar-thin scrollbar-thumb-border">
-                <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div key={message.id} className={`flex gap-3 ${message.type === "user" ? "justify-end" : "justify-start"}`}>
-                      {message.type === "ai" && (
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            <Brain className="w-4 h-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-
-                      <div className={`max-w-[80%] space-y-2 ${message.type === "user" ? "order-first" : ""}`}>
-                        <div
-                          className={`p-3 rounded-lg ${
-                            message.type === "user"
-                              ? "bg-primary text-primary-foreground hover:opacity-90"
-                              : "bg-muted text-muted-foreground"
-                          } transition-all duration-300`}
-                        >
-                          <p className="text-sm">{message.content}</p>
-                        </div>
-
-                        {message.suggestions && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {message.suggestions.map((suggestion, index) => (
-                              <Button
-                                key={index}
-                                size="sm"
-                                className="h-auto py-1 px-2 text-xs transition-all duration-300 hover:bg-primary hover:text-primary-foreground"
-                                onClick={() => handleSuggestion(suggestion)}
-                              >
-                                {suggestion}
-                              </Button>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="text-xs text-muted-foreground italic">
-                          {message.timestamp.toLocaleTimeString()}
-                        </div>
-                      </div>
-
-                      {message.type === "user" && (
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback>
-                            <User className="w-4 h-4" />
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
+      {/* Messages Container */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[80%] ${
+                  message.role === 'user'
+                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-2xl rounded-tr-sm'
+                    : message.isError
+                    ? 'bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-200 border border-red-200 dark:border-red-800 rounded-2xl rounded-tl-sm'
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-md rounded-2xl rounded-tl-sm'
+                } px-5 py-3.5 shadow-sm`}
+              >
+                {message.role === 'assistant' && !message.isError && (
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                    <BookOpen className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs font-semibold text-blue-500">Tutor</span>
+                  </div>
+                )}
+                <div className="prose prose-sm max-w-none dark:prose-invert">
+                  {message.content.split('\n').map((line, i) => (
+                    <p key={i} className="mb-2 last:mb-0 whitespace-pre-wrap">
+                      {line}
+                    </p>
                   ))}
                 </div>
-              </ScrollArea>
-
-              <div className="flex gap-2 mt-2">
-                <Input
-                  placeholder="Ask me anything about your studies..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                  className="flex-1"
-                />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!newMessage.trim()}
-                  className="bg-primary text-primary-foreground hover:opacity-90 transition-all duration-300"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Quick Actions */}
-          <Card className={cardClasses}>
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {quickActions.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <Button
-                    key={action.label}
-                    size="sm"
-                    className="w-full justify-start gap-2 hover:bg-primary hover:text-primary-foreground transition-all duration-300"
-                    onClick={() => handleQuickAction(action.prompt)}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {action.label}
-                  </Button>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          {/* Study Context */}
-          <Card className={cardClasses}>
-            <CardHeader>
-              <CardTitle className="text-lg">Current Context</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <h4 className="font-medium text-sm mb-2">Active Courses</h4>
-                <div className="space-y-1">
-                  <Badge variant="secondary" className="block text-center">
-                    Advanced Math
-                  </Badge>
-                  <Badge variant="secondary" className="block text-center">
-                    Physics 101
-                  </Badge>
-                  <Badge variant="secondary" className="block text-center">
-                    Chemistry
-                  </Badge>
+                <div className="text-xs opacity-60 mt-2">
+                  {message.timestamp.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
                 </div>
               </div>
-
-              <div>
-                <h4 className="font-medium text-sm mb-2">Recent Topics</h4>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <div>• Quadratic Equations</div>
-                  <div>• Newton's Laws</div>
-                  <div>• Chemical Bonding</div>
+            </div>
+          ))}
+          
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tl-sm px-5 py-4 shadow-md">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    Thinking...
+                  </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
+          
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
 
-          {/* AI Features */}
-          <Card className={cardClasses}>
-            <CardHeader>
-              <CardTitle className="text-lg">AI Capabilities</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xs text-muted-foreground space-y-2">
-                <div>✓ Step-by-step explanations</div>
-                <div>✓ Practice problem generation</div>
-                <div>✓ Study plan creation</div>
-                <div>✓ Concept clarification</div>
-                <div>✓ Progress tracking</div>
-                <div>✓ Personalized hints</div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Session Context Display */}
+      {sessionContext.topic && (
+        <div className="px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 border-t border-gray-200 dark:border-gray-600">
+          <div className="max-w-4xl mx-auto flex items-center gap-4 text-xs text-gray-700 dark:text-gray-300">
+            <span className="font-medium">Current Topic:</span>
+            <span className="px-2 py-1 bg-white dark:bg-gray-600 rounded-full">
+              {sessionContext.topic}
+            </span>
+            <span className="font-medium">Difficulty:</span>
+            <span className="px-2 py-1 bg-white dark:bg-gray-600 rounded-full capitalize">
+              {sessionContext.difficulty}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Input Area */}
+      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-t border-gray-200 dark:border-gray-700 px-4 py-4 shadow-lg">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex gap-3">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Ask a question or describe what you'd like to learn..."
+              rows={1}
+              className="flex-1 px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 resize-none text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+              style={{ minHeight: '48px', maxHeight: '120px' }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isLoading}
+              className="px-6 py-3 bg-gradient-to-br from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+            >
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+            Press Enter to send, Shift+Enter for new line
+          </p>
         </div>
       </div>
     </div>
   );
 };
+
+export default AIChatInterface;

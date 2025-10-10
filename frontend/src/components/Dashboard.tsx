@@ -41,16 +41,39 @@ export const Dashboard = () => {
         title: course.course_name,
         subject: course.categories.name,
         progress: course.progress_percent,
-        goalType: "new learning", // You might want to store this in the DB
-        dueDate: "N/A", // You might want to store this in the DB
-        totalLessons: 10, // You might want to store this in the DB
-        completedLessons: Math.round((course.progress_percent / 100) * 10), // Example calculation
+        goalType: "new learning",
+        dueDate: "N/A",
+        totalLessons: 10,
+        completedLessons: Math.round((course.progress_percent / 100) * 10),
       }));
 
       setCourses(formattedCourses);
     } catch (error: any) {
       console.error("Error fetching courses:", error.message);
     }
+  };
+
+  const handleGoToAiChat = () => {
+    // Navigate to AI chat - implement your navigation logic here
+    console.log("Navigating to AI Chat");
+    // Example: navigate('/ai-chat') if using react-router
+  };
+
+  const handleContinueLearning = (courseTitle: string) => {
+    // Navigate to course - implement your navigation logic here
+    console.log(`Continuing course: ${courseTitle}`);
+    // Example: navigate(`/course/${courseId}`)
+  };
+
+  const handleQuickAction = (action: string) => {
+    console.log(`Quick action: ${action}`);
+    // Implement your action handlers here
+  };
+
+    const handleGoalCreated = () => {
+    // Refresh courses after a new goal is created
+    fetchCourses();
+    setShowCreateGoal(false);
   };
 
   const todayTasks = [
@@ -86,7 +109,6 @@ export const Dashboard = () => {
           </p>
         </div>
         <Button
-          variant="gradient"
           className="gap-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-purple-500 hover:to-blue-500 text-white"
           onClick={() => setShowCreateGoal(true)}
         >
@@ -181,7 +203,7 @@ export const Dashboard = () => {
                     variant="outline"
                     size="sm"
                     className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
-                    onClick={() => window.open(`/course/${course.id}`, "_blank")}
+                    onClick={() => alert(`Continuing course: ${course.title}`)} // Placeholder action
                   >
                     Continue Learning
                   </Button>
@@ -249,14 +271,16 @@ export const Dashboard = () => {
               </CardHeader>
               <CardContent className="space-y-2">
                 {[
-                  { icon: Brain, label: "Ask AI Tutor" },
-                  { icon: BookOpen, label: "Take Practice Test" },
-                  { icon: TrendingUp, label: "View Progress" },
+                  { icon: Brain, label: "Ask AI Tutor", action: (handleGoToAiChat) },
+                  { icon: BookOpen, label: "Take Practice Test", action: () => handleQuickAction("practice-test") },
+                  { icon: TrendingUp, label: "View Progress", action: () => handleQuickAction("view-progress") },
                 ].map((action, idx) => (
                   <Button
                     key={idx}
+                    variant="outline"
                     size="sm"
-                    className="w-full justify-start gap-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
+                    className="w-full justify-start gap-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all duration-300"
+                    onClick={action.action}
                   >
                     <action.icon className="w-4 h-4" />
                     {action.label}
@@ -268,7 +292,7 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      <CreateGoalDialog open={showCreateGoal} onOpenChange={setShowCreateGoal} onGoalCreated={fetchCourses} />
+      <CreateGoalDialog open={showCreateGoal} onOpenChange={setShowCreateGoal} onGoalCreated={handleGoalCreated} />
     </div>
   );
 };

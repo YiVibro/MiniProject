@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { LandingPage } from "./LandingPage";
 import { Dashboard } from "./Dashboard";
-import { AIChatInterface } from "./AIChatInterface";
+import AIChatInterface  from "./AIChatInterface";
 import { NotesSection } from "./NotesSection";
 import { Workshops } from "./Workshops";
 import { Profile } from "./Profile";

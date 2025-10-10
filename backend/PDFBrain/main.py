@@ -6,6 +6,7 @@ import uvicorn
 import os
 from contextlib import asynccontextmanager
 
+from routers.ai_chat import router as ai_chat
 from database import init_db
 from routers.pdf_router import router as pdf_router
 from routers.chat_router import router as chat_router
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(pdf_router, prefix="/api/pdf", tags=["PDF Processing"])
 app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
 app.include_router(quiz_router, prefix="/api/quiz", tags=["Quiz Generation"])
+app.include_router(ai_chat, prefix="/api/ai", tags=["AI Chat"])
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -14,14 +14,14 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 
 import { Dashboard } from "./components/Dashboard";
-import { AIChatInterface } from "./components/AIChatInterface";
+import AIChatInterface  from "./components/AIChatInterface";
 import { CoursesPage } from "./components/CoursesPage";
 import { NotesSection } from "./components/NotesSection";
 import { Workshops } from "./components/Workshops";
 import { Profile } from "./components/Profile";
 import { Navigation } from "./components/Navigation";
 import { AuthProvider, useAuth } from "./store/AuthContext";
-import CoursePage from "./pages/CoursePage";
+import CoursePage from "./components/CoursePage";
 
 const queryClient = new QueryClient();
 
