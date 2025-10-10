@@ -21,6 +21,7 @@ import { Workshops } from "./components/Workshops";
 import { Profile } from "./components/Profile";
 import { Navigation } from "./components/Navigation";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import CoursePage from "./pages/CoursePage";
 
 const queryClient = new QueryClient();
 
@@ -99,6 +100,16 @@ const App = () => {
                 <Route path="/auth/callback" element={<AuthCallback />} />
 
                 {/* Protected pages */}
+                <Route
+                  path="/course/:courseId"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <CoursePage />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
                 <Route
                   path="/dashboard"
                   element={

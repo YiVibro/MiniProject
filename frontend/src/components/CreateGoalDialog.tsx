@@ -134,6 +134,32 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
 
       onGoalCreated(); // Refresh the dashboard
       onOpenChange(false); // Close the dialog
+      try {
+        // Try to create a course via backend to obtain a course id
+        const profile = user.user_metadata || {};
+        const res = await (await import("@/lib/agentService")).default.createCourse({
+          user_id: user.id,
+          subject: goalData.subject,
+          topic: goalData.title,
+          weeks: goalData.weeks,
+          focus: goalData.focus,
+          assessments: true,
+          user_profile: {
+            name: profile.full_name || profile.name || "Learner",
+            email: user.email || `${user.id}@example.com`,
+            learning_style: goalData.learningStyle || "balanced",
+            preferred_difficulty: goalData.difficulty || "intermediate",
+            available_time: parseInt(goalData.duration || "60"),
+            learning_goals: [goalData.description || "Learn the subject"],
+            interests: [],
+          },
+        });
+        if (res?.course_id) {
+          window.open(`/course/${res.course_id}`, "_blank");
+        }
+      } catch (e) {
+        console.warn("Course creation failed; skipping open tab.", e);
+      }
       
       // Reset form
       setGoalData({

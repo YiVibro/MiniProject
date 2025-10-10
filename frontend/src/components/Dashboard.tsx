@@ -181,7 +181,7 @@ export const Dashboard = () => {
                     variant="outline"
                     size="sm"
                     className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
-                    onClick={() => alert(`Continuing course: ${course.title}`)} // Placeholder action
+                    onClick={() => window.open(`/course/${course.id}`, "_blank")}
                   >
                     Continue Learning
                   </Button>
@@ -268,7 +268,7 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      <CreateGoalDialog open={showCreateGoal} onOpenChange={setShowCreateGoal} />
+      <CreateGoalDialog open={showCreateGoal} onOpenChange={setShowCreateGoal} onGoalCreated={fetchCourses} />
     </div>
   );
 };

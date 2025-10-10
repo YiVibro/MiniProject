@@ -11,6 +11,10 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent / "new_agent"))
 from tutoring_system import MultiAgentTutoringSystem, SystemConfig
 from dynamic_learning_planner import DynamicLearningPlanner
 from interactive_course_creator import InteractiveCourseCreator
+try:
+    from langgraph_course_creator import LangGraphCourseCreator
+except Exception:  # pragma: no cover
+    LangGraphCourseCreator = None  # type: ignore
 from models import UserProfile, UserProgress, Lesson
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -29,6 +33,15 @@ config = SystemConfig(
 tutoring_system = MultiAgentTutoringSystem(config)
 learning_planner = DynamicLearningPlanner()
 course_creator = InteractiveCourseCreator()
+lg_course_creator = None
+if LangGraphCourseCreator is not None:
+    try:
+        lg_course_creator = LangGraphCourseCreator(
+            api_key=os.getenv("GOOGLE_API_KEY"),
+            model="gemini-1.5-flash",
+        )
+    except Exception:
+        lg_course_creator = None
 
 # Request/Response Models
 class CreateLearningPlanRequest(BaseModel):
@@ -115,28 +128,52 @@ async def create_course(request: CreateCourseRequest):
             interests=request.user_profile.get("interests", [])
         )
         
-        # Initialize course creator if needed
+        # Try LangGraph-based generation first (no hardcoding)
+        if lg_course_creator is not None:
+            from uuid import uuid4
+            goal = f"Learn {request.subject} focusing on {request.topic} with a {request.focus} approach."
+            lg = await lg_course_creator.create_course(
+                subject=request.subject,
+                topic=request.topic,
+                weeks=request.weeks,
+                focus=request.focus,
+                user_profile=user_profile.dict(),
+                goal=goal,
+            )
+            path_id = str(uuid4())
+            curriculum = lg.get("curriculum", [])
+            learning_path = lg.get("learning_path", {})
+            return CourseResponse(
+                course_id=path_id,
+                curriculum=curriculum,
+                learning_path={
+                    "path_id": path_id,
+                    **learning_path,
+                },
+                requirements={
+                    "subject": request.subject,
+                    "topic": request.topic,
+                    "weeks": request.weeks,
+                    "focus": request.focus,
+                    "assessments": request.assessments,
+                },
+            )
+
+        # Fallback to existing interactive system
         if not course_creator.system:
             await course_creator.initialize_system()
-        
-        # Create course
         curriculum = await course_creator.system.create_dynamic_curriculum(
             subject=request.subject,
             level=user_profile.preferred_difficulty,
             duration_weeks=request.weeks,
             user_profile=user_profile
         )
-        
-        # Create learning path
         path_id = await course_creator.system.create_personalized_learning_path(
             user_id=request.user_id,
             user_request=f"Learn {request.subject} focusing on {request.topic} with {request.focus} approach",
             user_profile=user_profile
         )
-        
-        # Get learning path details
         learning_path = course_creator.system.learning_paths.get(path_id, {})
-        
         return CourseResponse(
             course_id=path_id,
             curriculum=[{
@@ -315,3 +352,5 @@ async def get_difficulty_levels():
             {"value": "advanced", "label": "Advanced", "description": "Experienced learner"}
         ]
     }
+
+
