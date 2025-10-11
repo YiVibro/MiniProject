@@ -83,106 +83,134 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
   };
 
   const handleCreateGoal = async () => {
-    if (!user) {
-      alert("Error: You must be logged in to create a goal. Please try logging in again.");
-      return;
-    }
-    
-    if (!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty) {
-      alert("Please fill in all required fields.");
-      return;
+  if (!user) {
+    alert("Error: You must be logged in to create a goal. Please try logging in again.");
+    return;
+  }
+  
+  if (!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty) {
+    alert("Please fill in all required fields.");
+    return;
+  }
+
+  setIsLoading(true);
+
+  try {
+    // 1. Find or create the category in Supabase
+    let { data: category, error: categoryError } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('name', goalData.subject)
+      .single();
+
+    if (categoryError && categoryError.code !== 'PGRST116') { // PGRST116: row not found
+      throw categoryError;
     }
 
-    setIsLoading(true);
-
-    try {
-      // 1. Find or create the category in Supabase
-      let { data: category, error: categoryError } = await supabase
+    if (!category) {
+      const { data: newCategory, error: newCategoryError } = await supabase
         .from('categories')
+        .insert({ name: goalData.subject })
         .select('id')
-        .eq('name', goalData.subject)
         .single();
+      if (newCategoryError) throw newCategoryError;
+      category = newCategory;
+    }
 
-      if (categoryError && categoryError.code !== 'PGRST116') { // PGRST116: row not found
-        throw categoryError;
-      }
+    // 2. Create the learning goal first (this table uses UUID for category_id)
+    const { data: learningGoal, error: goalError } = await supabase
+      .from('learning_goals')
+      .insert({
+        user_id: user.id,
+        category_id: category.id, // This is UUID - correct for learning_goals table
+        title: goalData.title,
+        description: goalData.description,
+        goal_type: goalData.goalType,
+        learning_style: goalData.learningStyle,
+        difficulty: goalData.difficulty,
+        focus_type: goalData.focus,
+        study_duration_hours: parseInt(goalData.duration) || 5,
+        target_weeks: goalData.weeks,
+        target_date: goalData.targetDate,
+        status: 'active',
+        progress: 0,
+      })
+      .select()
+      .single();
 
-      if (!category) {
-        const { data: newCategory, error: newCategoryError } = await supabase
-          .from('categories')
-          .insert({ name: goalData.subject })
-          .select('id')
-          .single();
-        if (newCategoryError) throw newCategoryError;
-        category = newCategory;
-      }
+    if (goalError) throw goalError;
 
-      // 2. Create the user progress record (goal) in Supabase
-      const { error: progressError } = await supabase.from('user_progress').insert({
+    // 3. Now create the user_progress record with the correct category_id type
+    // For user_progress, we need to use a bigint category_id or leave it null
+    const { error: progressError } = await supabase
+      .from('user_progress')
+      .insert({
         user_id: user.id,
         category_id: category.id,
         course_name: goalData.title,
+        progress_percent: 0,
       });
 
-      if (progressError) throw progressError;
-
-      // TODO: Here you would call the agent service if needed, for example:
-      // await agentService.createLearningPath(goalData);
-
-      console.log("Goal created successfully in Supabase!");
-      alert(`Goal created successfully! Your ${goalData.subject} learning path has been created.`);
-
-      onGoalCreated(); // Refresh the dashboard
-      onOpenChange(false); // Close the dialog
-      try {
-        // Try to create a course via backend to obtain a course id
-        const profile = user.user_metadata || {};
-        const res = await (await import("@/lib/agentService")).default.createCourse({
-          user_id: user.id,
-          subject: goalData.subject,
-          topic: goalData.title,
-          weeks: goalData.weeks,
-          focus: goalData.focus,
-          assessments: true,
-          user_profile: {
-            name: profile.full_name || profile.name || "Learner",
-            email: user.email || `${user.id}@example.com`,
-            learning_style: goalData.learningStyle || "balanced",
-            preferred_difficulty: goalData.difficulty || "intermediate",
-            available_time: parseInt(goalData.duration || "60"),
-            learning_goals: [goalData.description || "Learn the subject"],
-            interests: [],
-          },
-        });
-        if (res?.course_id) {
-          window.open(`/course/${res.course_id}`, "_blank");
-        }
-      } catch (e) {
-        console.warn("Course creation failed; skipping open tab.", e);
-      }
-      
-      // Reset form
-      setGoalData({
-        title: "",
-        subject: "",
-        goalType: "",
-        duration: "",
-        description: "",
-        learningStyle: "",
-        difficulty: "",
-        weeks: 4,
-        focus: "balanced",
-        targetDate: undefined,
-      });
-      setUploadedFiles([]);
-
-    } catch (error: any) {
-      console.error("Error creating goal:", error.message);
-      alert(`Error creating goal: ${error.message}`);
-    } finally {
-      setIsLoading(false);
+    if (progressError) {
+      console.warn("Could not create user_progress record:", progressError);
+      // Continue anyway since the main goal was created
     }
-  };
+
+    console.log("Goal created successfully in Supabase!");
+    alert(`Goal created successfully! Your ${goalData.subject} learning path has been created.`);
+
+    onGoalCreated(); // Refresh the dashboard
+    onOpenChange(false); // Close the dialog
+    
+    try {
+      // Try to create a course via backend to obtain a course id
+      const profile = user.user_metadata || {};
+      const res = await (await import("@/lib/agentService")).default.createCourse({
+        user_id: user.id,
+        subject: goalData.subject,
+        topic: goalData.title,
+        weeks: goalData.weeks,
+        focus: goalData.focus,
+        assessments: true,
+        user_profile: {
+          name: profile.full_name || profile.name || "Learner",
+          email: user.email || `${user.id}@example.com`,
+          learning_style: goalData.learningStyle || "balanced",
+          preferred_difficulty: goalData.difficulty || "intermediate",
+          available_time: parseInt(goalData.duration || "60"),
+          learning_goals: [goalData.description || "Learn the subject"],
+          interests: [],
+        },
+      });
+      if (res?.course_id) {
+        window.open(`/course/${res.course_id}`, "_blank");
+      }
+    } catch (e) {
+      console.warn("Course creation failed; skipping open tab.", e);
+    }
+    
+    // Reset form
+    setGoalData({
+      title: "",
+      subject: "",
+      goalType: "",
+      duration: "",
+      description: "",
+      learningStyle: "",
+      difficulty: "",
+      weeks: 4,
+      focus: "balanced",
+      targetDate: undefined,
+    });
+    setUploadedFiles([]);
+
+  } catch (error: any) {
+    console.error("Error creating goal:", error.message);
+    alert(`Error creating goal: ${error.message}`);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

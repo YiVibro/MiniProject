@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from "react"; 
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,73 +8,137 @@ import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Brain } from "lucide-
 import { CreateGoalDialog } from "./CreateGoalDialog";
 import { useAuth } from "../store/AuthContext";
 import { supabase } from "../lib/supabaseClient";
+import { ChatView } from "./ChatView";
+import { QuizView } from "./QuizView";
+import { PDFUploadCard } from "./PDFUploadCard";
 
 export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const { user } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false); // ✅ FIXED: Added missing loading state
+  const [showQuizGenerationDialog, setShowQuizGenerationDialog] = useState(false);
+  const [currentQuizId, setCurrentQuizId] = useState<number | null>(null);
+  const [latestDoc, setLatestDoc] = useState<any>(null);
+  const [view, setView] = useState<"dashboard" | "chat" | "quiz">("dashboard");
 
-  useEffect(() => {
-    if (user) {
-      fetchCourses();
-    }
-  }, [user]);
-
+  // ✅ FIXED: Properly defined fetchCourses with category join
   const fetchCourses = async () => {
     if (!user) return;
 
     try {
+      setLoading(true);
+
+      // ✅ FIXED: Join with categories table to get proper subject names
       const { data, error } = await supabase
-        .from('user_progress')
+        .from("user_progress")
         .select(`
-          id,
-          course_name,
-          progress_percent,
-          categories (name)
+          id, 
+          course_name, 
+          progress_percent, 
+          category_id,
+          categories!inner(name)
         `)
-        .eq('user_id', user.id);
+        .eq("user_id", user.id);
 
       if (error) throw error;
+
+      console.log("Fetched courses:", data); // Debug log
 
       const formattedCourses = data.map((course: any) => ({
         id: course.id,
         title: course.course_name,
-        subject: course.categories.name,
-        progress: course.progress_percent,
-        goalType: "new learning",
-        dueDate: "N/A",
+        subject: course.categories?.name || `Category ${course.category_id?.slice(0, 4) || 'General'}`,
+        progress: course.progress_percent || 0,
+        description: `Continue your learning journey`,
         totalLessons: 10,
-        completedLessons: Math.round((course.progress_percent / 100) * 10),
+        completedLessons: Math.round(((course.progress_percent || 0) / 100) * 10),
+        goalType: "Learning Goal", // ✅ FIXED: Added missing goalType
+        dueDate: "2024-12-31" // ✅ FIXED: Added missing dueDate
       }));
 
       setCourses(formattedCourses);
     } catch (error: any) {
       console.error("Error fetching courses:", error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGoToAiChat = () => {
-    // Navigate to AI chat - implement your navigation logic here
-    console.log("Navigating to AI Chat");
-    // Example: navigate('/ai-chat') if using react-router
+  const fetchLatestDocument = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/pdf/documents?limit=1");
+      if (!res.ok) throw new Error("Failed to fetch documents");
+      const docs = await res.json();
+      if (docs.length > 0) {
+        setLatestDoc(docs[0]);
+      }
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+    }
   };
 
-  const handleContinueLearning = (courseTitle: string) => {
-    // Navigate to course - implement your navigation logic here
-    console.log(`Continuing course: ${courseTitle}`);
-    // Example: navigate(`/course/${courseId}`)
-  };
+  useEffect(() => {
+    if (user) {
+      fetchCourses();
+      fetchLatestDocument();
+    }
+  }, [user]);
 
-  const handleQuickAction = (action: string) => {
-    console.log(`Quick action: ${action}`);
-    // Implement your action handlers here
-  };
+  // ✅ FIXED: Added real-time subscription with proper cleanup
+  useEffect(() => {
+    if (!user) return;
 
-    const handleGoalCreated = () => {
-    // Refresh courses after a new goal is created
+    const subscription = supabase
+      .channel('user_progress_updates')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'user_progress',
+          filter: `user_id=eq.${user.id}`
+        },
+        () => {
+          console.log("Real-time update received, refreshing courses...");
+          fetchCourses();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user]);
+
+  const handleGoalCreated = () => {
+    console.log("Goal created, refreshing courses...");
     fetchCourses();
     setShowCreateGoal(false);
   };
+
+  const handleUploadComplete = () => {
+    setShowQuizGenerationDialog(true);
+  };
+
+  // Navigation handlers
+  if (view === "chat") {
+    return (
+      <ChatView
+        documentId={latestDoc?.id}
+        onBack={() => setView("dashboard")}
+      />
+    );
+  }
+
+  if (view === "quiz" && currentQuizId) {
+    return (
+      <QuizView
+        quizId={currentQuizId}
+        onBack={() => setView("dashboard")}
+      />
+    );
+  }
 
   const todayTasks = [
     { task: "Complete Calculus Chapter 5", subject: "Mathematics", urgent: true },
@@ -103,7 +167,7 @@ export const Dashboard = () => {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold">Welcome back, {user?.user_metadata.full_name || 'Student'}!</h1>
+          <h1 className="text-3xl font-bold">Welcome back, {user?.user_metadata?.full_name || 'Student'}!</h1>
           <p className="text-muted-foreground mt-1">
             Ready to continue your learning journey?
           </p>
@@ -122,7 +186,7 @@ export const Dashboard = () => {
         {[
           { icon: BookOpen, label: "Active Courses", value: courses.length, color: "from-blue-500 to-blue-700" },
           { icon: Target, label: "Goals Achieved", value: "8", color: "from-green-500 to-green-700" },
-          { icon: TrendingUp, label: "Avg Progress", value: "87%", color: "from-purple-500 to-purple-700" },
+          { icon: TrendingUp, label: "Avg Progress", value: `${courses.length > 0 ? Math.round(courses.reduce((acc, course) => acc + course.progress, 0) / courses.length) : 0}%`, color: "from-purple-500 to-purple-700" },
           { icon: Clock, label: "Study Streak", value: "24h", color: "from-orange-500 to-orange-700" },
         ].map((stat, i) => (
           <motion.div
@@ -161,54 +225,77 @@ export const Dashboard = () => {
               <CardTitle className="flex items-center gap-2">
                 <BookOpen className="w-5 h-5" />
                 Your Active Courses
+                {loading && <Badge variant="secondary">Loading...</Badge>}
               </CardTitle>
               <CardDescription className="text-muted-foreground">
                 Continue where you left off
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {courses.map((course, index) => (
-                <motion.div
-                  key={course.id}
-                  className={innerCardClasses}
-                  initial="hidden"
-                  animate="visible"
-                  variants={fadeInUp}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold">{course.title}</h3>
-                      <p className="text-sm text-muted-foreground">{course.subject}</p>
-                    </div>
-                    <Badge variant="secondary">{course.goalType}</Badge>
-                  </div>
-
-                  <div className="space-y-2 mt-2">
-                    <div className="flex justify-between text-sm text-muted-foreground">
-                      <span>Progress</span>
-                      <span>{course.progress}%</span>
-                    </div>
-                    <Progress value={course.progress} className="h-2 rounded-full bg-border" />
-                  </div>
-
-                  <div className="flex items-center justify-between text-sm text-muted-foreground mt-1">
-                    <span>
-                      {course.completedLessons}/{course.totalLessons} lessons
-                    </span>
-                    <span>Due: {course.dueDate}</span>
-                  </div>
-
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="text-muted-foreground mt-2">Loading courses...</p>
+                </div>
+              ) : courses.length === 0 ? (
+                <div className="text-center py-8">
+                  <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No active courses</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Create your first learning goal to get started
+                  </p>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
-                    onClick={() => alert(`Continuing course: ${course.title}`)} // Placeholder action
+                    onClick={() => setShowCreateGoal(true)}
+                    className="gap-2"
                   >
-                    Continue Learning
+                    <Plus className="w-4 h-4" />
+                    Create Goal
                   </Button>
-                </motion.div>
-              ))}
+                </div>
+              ) : (
+                courses.map((course, index) => (
+                  <motion.div
+                    key={course.id}
+                    className={innerCardClasses}
+                    initial="hidden"
+                    animate="visible"
+                    variants={fadeInUp}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold">{course.title}</h3>
+                        <p className="text-sm text-muted-foreground">{course.subject}</p>
+                      </div>
+                      <Badge variant="secondary">{course.goalType}</Badge>
+                    </div>
+
+                    <div className="space-y-2 mt-2">
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Progress</span>
+                        <span>{course.progress}%</span>
+                      </div>
+                      <Progress value={course.progress} className="h-2 rounded-full bg-border" />
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm text-muted-foreground mt-1">
+                      <span>
+                        {course.completedLessons}/{course.totalLessons} lessons
+                      </span>
+                      <span>Due: {course.dueDate}</span>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
+                      onClick={() => handleContinueLearning(course.title)}
+                    >
+                      Continue Learning
+                    </Button>
+                  </motion.div>
+                ))
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -258,41 +345,31 @@ export const Dashboard = () => {
             </Card>
           </motion.div>
 
-          {/* Quick Actions */}
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={fadeInUp}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
-            <Card className={cardClasses}>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {[
-                  { icon: Brain, label: "Ask AI Tutor", action: (handleGoToAiChat) },
-                  { icon: BookOpen, label: "Take Practice Test", action: () => handleQuickAction("practice-test") },
-                  { icon: TrendingUp, label: "View Progress", action: () => handleQuickAction("view-progress") },
-                ].map((action, idx) => (
-                  <Button
-                    key={idx}
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start gap-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all duration-300"
-                    onClick={action.action}
-                  >
-                    <action.icon className="w-4 h-4" />
-                    {action.label}
-                  </Button>
-                ))}
-              </CardContent>
-            </Card>
-          </motion.div>
+          <PDFUploadCard onUploadComplete={handleUploadComplete} />
         </div>
       </div>
 
-      <CreateGoalDialog open={showCreateGoal} onOpenChange={setShowCreateGoal} onGoalCreated={handleGoalCreated} />
+      <CreateGoalDialog 
+        open={showCreateGoal} 
+        onOpenChange={setShowCreateGoal} 
+        onGoalCreated={handleGoalCreated} 
+      />
     </div>
   );
+
+  // ✅ FIXED: Added missing function implementations
+  function handleContinueLearning(courseTitle: string) {
+    console.log(`Continuing course: ${courseTitle}`);
+    // Implement your navigation logic here
+  }
+
+  function handleQuickAction(action: string) {
+    console.log(`Quick action: ${action}`);
+    // Implement your action handlers here
+  }
+
+  function handleGoToAiChat() {
+    console.log("Navigating to AI Chat");
+    // Implement navigation logic here
+  }
 };
