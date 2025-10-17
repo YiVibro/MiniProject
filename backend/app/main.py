@@ -60,22 +60,29 @@ app.add_middleware(
 )
 
 # CORS for frontend
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+# Support multiple origins via comma-separated env var; default to common dev ports
+FRONTEND_ORIGINS = os.getenv(
+    "FRONTEND_ORIGINS",
+    "http://localhost:5173,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:8080",
+)
+ALLOWED_ORIGINS = [o.strip() for o in FRONTEND_ORIGINS.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Import routers
-from app.routes import auth, oauth, agents
+from app.routes import auth, oauth, agents, dynamic_course
 
 # Include all routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 app.include_router(agents.router, tags=["Agents"])
+app.include_router(dynamic_course.router)
 
 @app.get("/")
 def root():

@@ -50,6 +50,13 @@ export interface CourseResponse {
     content: string;
     learning_objectives: string[];
     prerequisites: string[];
+    subtopics?: Array<{ title: string; deadline_minutes: number }>;
+    questions?: Array<{
+      question: string;
+      type: 'multiple_choice' | 'short_answer';
+      options: string[];
+      answer: string;
+    }>;
   }>;
   learning_path: {
     path_id: string;
@@ -130,6 +137,11 @@ export class AgentService {
   // Course Creation
   async createCourse(request: CreateCourseRequest): Promise<CourseResponse> {
     const response = await api.post(`${this.baseUrl}/create-course`, request);
+    return response.data;
+  }
+
+  async getCourse(courseId: string): Promise<CourseResponse> {
+    const response = await api.get(`${this.baseUrl}/course/${courseId}`);
     return response.data;
   }
 

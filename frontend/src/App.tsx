@@ -22,6 +22,7 @@ import { Profile } from "./components/Profile";
 import { Navigation } from "./components/Navigation";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import CoursePage from "./components/CoursePage";
+import TestPage from "./pages/TestPage";
 
 const queryClient = new QueryClient();
 
@@ -106,6 +107,16 @@ const App = () => {
                     <RequireAuth>
                       <Layout>
                         <CoursePage />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/course/:courseId/test"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <TestPage />
                       </Layout>
                     </RequireAuth>
                   }
