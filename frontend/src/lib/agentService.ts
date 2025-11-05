@@ -121,7 +121,7 @@ export interface DifficultyLevel {
 }
 
 export class AgentService {
-  private baseUrl = '/api/agents';
+  private baseUrl = '/agents';
 
   // Learning Plan Management
   async createLearningPlan(request: CreateLearningPlanRequest): Promise<LearningPlanResponse> {

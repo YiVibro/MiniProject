@@ -11,16 +11,22 @@ import { supabase } from "../lib/supabaseClient";
 import { ChatView } from "./ChatView";
 import { QuizView } from "./QuizView";
 import { PDFUploadCard } from "./PDFUploadCard";
+import { agentService } from "../lib/agentService";
+import { useToast } from "@/components/ui/use-toast";
 
 export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const { user } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false); // ✅ FIXED: Added missing loading state
+  const [loading, setLoading] = useState(false); 
   const [showQuizGenerationDialog, setShowQuizGenerationDialog] = useState(false);
   const [currentQuizId, setCurrentQuizId] = useState<number | null>(null);
   const [latestDoc, setLatestDoc] = useState<any>(null);
   const [view, setView] = useState<"dashboard" | "chat" | "quiz">("dashboard");
+  const [isContinuing, setIsContinuing] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentCourseName, setCurrentCourseName] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // ✅ FIXED: Properly defined fetchCourses with category join
   const fetchCourses = async () => {
@@ -121,12 +127,95 @@ export const Dashboard = () => {
     setShowQuizGenerationDialog(true);
   };
 
+  // ✅ FIXED: Implemented continue learning functionality
+  const handleContinueLearning = async (courseTitle: string) => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to continue learning.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsContinuing(true);
+      
+      // Get the course data to find the lesson ID
+      const course = courses.find(c => c.title === courseTitle);
+      if (!course) {
+        throw new Error("Course not found");
+      }
+
+      // Get learning plan status to find the current lesson
+      let planStatus = null;
+      let lessonId = null;
+      
+      try {
+        planStatus = await agentService.getLearningPlanStatus(user.id);
+        
+        // Find the next lesson to continue with
+        if (planStatus && planStatus.curriculum) {
+          // Find the first incomplete lesson
+          const incompleteLesson = planStatus.curriculum.find((lesson: any) => 
+            !lesson.completed && lesson.progress < 100
+          );
+          lessonId = incompleteLesson?.id || planStatus.curriculum[0]?.id;
+        }
+      } catch (error) {
+        console.log("No existing learning plan found, creating new session");
+        // If no learning plan exists, we'll create a new session
+      }
+
+      // Create session request with appropriate lesson ID
+      const sessionRequest = {
+        user_id: user.id,
+        lesson_id: lessonId || `lesson_${courseTitle.toLowerCase().replace(/\s+/g, '_')}`,
+        session_preferences: {
+          course_name: courseTitle,
+          subject: course.subject,
+          difficulty: "medium",
+          learning_style: "adaptive"
+        }
+      };
+
+      const sessionResponse = await agentService.startLearningSession(sessionRequest);
+      
+      // Navigate to chat view with the session
+      setCurrentSessionId(sessionResponse.session_id);
+      setCurrentCourseName(courseTitle);
+      setView("chat");
+      
+      const sessionType = lessonId ? "Resumed" : "Started";
+      toast({
+        title: `Learning Session ${sessionType}`,
+        description: `Continuing ${courseTitle} - Session ID: ${sessionResponse.session_id}`,
+      });
+
+    } catch (error: any) {
+      console.error("Error continuing learning:", error);
+      toast({
+        title: "Error Starting Session",
+        description: error.message || "Failed to start learning session. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsContinuing(false);
+    }
+  };
+
   // Navigation handlers
   if (view === "chat") {
     return (
       <ChatView
         documentId={latestDoc?.id}
-        onBack={() => setView("dashboard")}
+        onBack={() => {
+          setView("dashboard");
+          setCurrentSessionId(null);
+          setCurrentCourseName(null);
+        }}
+        sessionId={currentSessionId}
+        courseName={currentCourseName}
       />
     );
   }
@@ -290,8 +379,9 @@ export const Dashboard = () => {
                       size="sm"
                       className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
                       onClick={() => handleContinueLearning(course.title)}
+                      disabled={isContinuing}
                     >
-                      Continue Learning
+                      {isContinuing ? "Starting Session..." : `Continue ${course.title}`}
                     </Button>
                   </motion.div>
                 ))
@@ -356,12 +446,6 @@ export const Dashboard = () => {
       />
     </div>
   );
-
-  // ✅ FIXED: Added missing function implementations
-  function handleContinueLearning(courseTitle: string) {
-    console.log(`Continuing course: ${courseTitle}`);
-    // Implement your navigation logic here
-  }
 
   function handleQuickAction(action: string) {
     console.log(`Quick action: ${action}`);

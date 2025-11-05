@@ -4,18 +4,15 @@ from pydantic import BaseModel
 import asyncio
 import sys
 from pathlib import Path
-
-# Add new_agent directory to path
-sys.path.append(str(Path(__file__).parent.parent.parent.parent / "new_agent"))
-
-from tutoring_system import MultiAgentTutoringSystem, SystemConfig
-from dynamic_learning_planner import DynamicLearningPlanner
-from interactive_course_creator import InteractiveCourseCreator
+import os
+from new_agent.tutoring_system import MultiAgentTutoringSystem, SystemConfig
+from new_agent.dynamic_learning_planner import DynamicLearningPlanner
+from new_agent.interactive_course_creator import InteractiveCourseCreator
 try:
-    from langgraph_course_creator import LangGraphCourseCreator
+    from new_agent.langgraph_course_creator import LangGraphCourseCreator
 except Exception:  # pragma: no cover
     LangGraphCourseCreator = None  # type: ignore
-from models import UserProfile, UserProgress, Lesson
+from new_agent.models import UserProfile, UserProgress, Lesson
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -38,7 +35,7 @@ if LangGraphCourseCreator is not None:
     try:
         lg_course_creator = LangGraphCourseCreator(
             api_key=os.getenv("GOOGLE_API_KEY"),
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
         )
     except Exception:
         lg_course_creator = None
@@ -226,16 +223,25 @@ async def track_progress(request: ProgressTrackingRequest):
 async def start_learning_session(request: LearningSessionRequest):
     """Start a learning session with adaptive content"""
     try:
+        # Ensure lesson exists before starting session
+        lesson = tutoring_system.lessons.get(request.lesson_id)
+        if not lesson:
+            lesson = Lesson(
+                lesson_id=request.lesson_id,
+                title=request.session_preferences.get("subject", request.lesson_id) if request.session_preferences else request.lesson_id,
+                content="This is an auto-generated lesson placeholder.",
+                difficulty=request.session_preferences.get("difficulty", "medium") if request.session_preferences else "medium",
+                duration=30,
+                learning_objectives=[],
+                prerequisites=[]
+            )
+            tutoring_system.lessons[request.lesson_id] = lesson
+
         session_id = await tutoring_system.start_learning_session(
             request.user_id,
             request.lesson_id,
             request.session_preferences
         )
-        
-        # Get lesson details
-        lesson = tutoring_system.lessons.get(request.lesson_id)
-        if not lesson:
-            raise HTTPException(status_code=404, detail="Lesson not found")
         
         # Get adaptive content
         adaptive_content = await tutoring_system._create_adaptive_content(

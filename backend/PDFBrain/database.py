@@ -21,7 +21,7 @@ Base = declarative_base()
 
 async def init_db():
     """Initialize database tables"""
-    from models import PDFDocument, ChatMessage, Quiz, QuizQuestion
+    from PDFBrain.models import PDFDocument, ChatMessage, Quiz, QuizQuestion
     Base.metadata.create_all(bind=engine)
 
 def get_db():
