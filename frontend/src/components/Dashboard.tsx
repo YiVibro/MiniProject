@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react"; 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Brain } from "lucide-react";
+import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Sparkles } from "lucide-react";
 import { CreateGoalDialog } from "./CreateGoalDialog";
 import { useAuth } from "../store/AuthContext";
 import { supabase } from "../lib/supabaseClient";
@@ -13,6 +13,8 @@ import { QuizView } from "./QuizView";
 import { PDFUploadCard } from "./PDFUploadCard";
 import { agentService } from "../lib/agentService";
 import { useToast } from "@/components/ui/use-toast";
+import DynamicCourseGenerator from "./DynamicCourseGenerator";
+import { CourseLearnView } from "./CourseLearnView";
 
 export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
@@ -22,20 +24,17 @@ export const Dashboard = () => {
   const [showQuizGenerationDialog, setShowQuizGenerationDialog] = useState(false);
   const [currentQuizId, setCurrentQuizId] = useState<number | null>(null);
   const [latestDoc, setLatestDoc] = useState<any>(null);
-  const [view, setView] = useState<"dashboard" | "chat" | "quiz">("dashboard");
+  const [view, setView] = useState<"dashboard" | "learn" | "quiz">("dashboard");
   const [isContinuing, setIsContinuing] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentCourseName, setCurrentCourseName] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // ✅ FIXED: Properly defined fetchCourses with category join
   const fetchCourses = async () => {
     if (!user) return;
 
     try {
       setLoading(true);
-
-      // ✅ FIXED: Join with categories table to get proper subject names
       const { data, error } = await supabase
         .from("user_progress")
         .select(`
@@ -49,8 +48,6 @@ export const Dashboard = () => {
 
       if (error) throw error;
 
-      console.log("Fetched courses:", data); // Debug log
-
       const formattedCourses = data.map((course: any) => ({
         id: course.id,
         title: course.course_name,
@@ -59,8 +56,8 @@ export const Dashboard = () => {
         description: `Continue your learning journey`,
         totalLessons: 10,
         completedLessons: Math.round(((course.progress_percent || 0) / 100) * 10),
-        goalType: "Learning Goal", // ✅ FIXED: Added missing goalType
-        dueDate: "2024-12-31" // ✅ FIXED: Added missing dueDate
+        goalType: "Learning Goal",
+        dueDate: "2024-12-31"
       }));
 
       setCourses(formattedCourses);
@@ -91,7 +88,6 @@ export const Dashboard = () => {
     }
   }, [user]);
 
-  // ✅ FIXED: Added real-time subscription with proper cleanup
   useEffect(() => {
     if (!user) return;
 
@@ -106,7 +102,6 @@ export const Dashboard = () => {
           filter: `user_id=eq.${user.id}`
         },
         () => {
-          console.log("Real-time update received, refreshing courses...");
           fetchCourses();
         }
       )
@@ -118,7 +113,6 @@ export const Dashboard = () => {
   }, [user]);
 
   const handleGoalCreated = () => {
-    console.log("Goal created, refreshing courses...");
     fetchCourses();
     setShowCreateGoal(false);
   };
@@ -127,8 +121,33 @@ export const Dashboard = () => {
     setShowQuizGenerationDialog(true);
   };
 
-  // ✅ FIXED: Implemented continue learning functionality
-  const handleContinueLearning = async (courseTitle: string) => {
+  const handleGeneratePlan = async (courseName: string) => {
+    if (!user) return;
+
+    try {
+      const plan = await agentService.createLearningPlan({
+        user_id: user.id,
+        user_request: `I want to learn ${courseName}`,
+        preferences: {}
+      });
+
+      toast({
+        title: "Learning Plan Created! 🎉",
+        description: `Your personalized ${courseName} course is ready!`,
+      });
+
+      await fetchCourses(); // Refresh courses after plan creation
+    } catch (error: any) {
+      console.error('Error generating plan:', error);
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Failed to create learning plan. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleContinueLearning = async (course: any) => {
     if (!user) {
       toast({
         title: "Authentication Required",
@@ -141,61 +160,50 @@ export const Dashboard = () => {
     try {
       setIsContinuing(true);
       
-      // Get the course data to find the lesson ID
-      const course = courses.find(c => c.title === courseTitle);
-      if (!course) {
-        throw new Error("Course not found");
-      }
-
-      // Get learning plan status to find the current lesson
-      let planStatus = null;
-      let lessonId = null;
-      
+      // Get or create learning plan first
+      let plan;
       try {
-        planStatus = await agentService.getLearningPlanStatus(user.id);
-        
-        // Find the next lesson to continue with
-        if (planStatus && planStatus.curriculum) {
-          // Find the first incomplete lesson
-          const incompleteLesson = planStatus.curriculum.find((lesson: any) => 
-            !lesson.completed && lesson.progress < 100
-          );
-          lessonId = incompleteLesson?.id || planStatus.curriculum[0]?.id;
-        }
-      } catch (error) {
-        console.log("No existing learning plan found, creating new session");
-        // If no learning plan exists, we'll create a new session
+        plan = await agentService.getLearningPlanStatus(user.id);
+      } catch {
+        plan = await agentService.createLearningPlan({
+          user_id: user.id,
+          user_request: `I want to learn ${course.title}`,
+          preferences: {
+            subject: course.subject,
+            difficulty: course.progress > 50 ? "intermediate" : "beginner",
+            learning_style: "adaptive"
+          }
+        });
       }
 
-      // Create session request with appropriate lesson ID
-      const sessionRequest = {
+      // Start the learning session
+      const sessionResponse = await agentService.startLearningSession({
         user_id: user.id,
-        lesson_id: lessonId || `lesson_${courseTitle.toLowerCase().replace(/\s+/g, '_')}`,
+        lesson_id: `lesson_${course.title.toLowerCase().replace(/\s+/g, '_')}`,
         session_preferences: {
-          course_name: courseTitle,
+          course_id: course.id,  
+          course_name: course.title,
           subject: course.subject,
-          difficulty: "medium",
-          learning_style: "adaptive"
+          difficulty: plan?.requirements?.current_level || "beginner",
+          learning_style: "adaptive",
+          plan_id: plan?.path_id
         }
-      };
+      });
 
-      const sessionResponse = await agentService.startLearningSession(sessionRequest);
-      
-      // Navigate to chat view with the session
+      // Update UI state
       setCurrentSessionId(sessionResponse.session_id);
-      setCurrentCourseName(courseTitle);
-      setView("chat");
-      
-      const sessionType = lessonId ? "Resumed" : "Started";
+      setCurrentCourseName(course.title);
+      setView("learn");
+
       toast({
-        title: `Learning Session ${sessionType}`,
-        description: `Continuing ${courseTitle} - Session ID: ${sessionResponse.session_id}`,
+        title: "Learning Session Started! 🎉",
+        description: `Continuing your ${course.title} journey...`,
       });
 
     } catch (error: any) {
-      console.error("Error continuing learning:", error);
+      console.error("Error starting learning session:", error);
       toast({
-        title: "Error Starting Session",
+        title: "Error",
         description: error.message || "Failed to start learning session. Please try again.",
         variant: "destructive",
       });
@@ -204,18 +212,19 @@ export const Dashboard = () => {
     }
   };
 
-  // Navigation handlers
-  if (view === "chat") {
+  if (view === "learn") {
     return (
-      <ChatView
-        documentId={latestDoc?.id}
+      <CourseLearnView
+        sessionId={currentSessionId}
+        lessonId={`lesson_${currentCourseName?.toLowerCase().replace(/\s+/g, '_')}`}
+        lessonTitle={currentCourseName || ''}
+        courseSubject={courses.find(c => c.title === currentCourseName)?.subject || ''}
         onBack={() => {
           setView("dashboard");
           setCurrentSessionId(null);
           setCurrentCourseName(null);
+          fetchCourses(); // Refresh courses to show updated progress
         }}
-        sessionId={currentSessionId}
-        courseName={currentCourseName}
       />
     );
   }
@@ -247,7 +256,6 @@ export const Dashboard = () => {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans p-6 space-y-6 transition-colors duration-500">
       
-      {/* Welcome Header */}
       <motion.div
         initial="hidden"
         animate="visible"
@@ -270,7 +278,6 @@ export const Dashboard = () => {
         </Button>
       </motion.div>
 
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { icon: BookOpen, label: "Active Courses", value: courses.length, color: "from-blue-500 to-blue-700" },
@@ -301,7 +308,6 @@ export const Dashboard = () => {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Active Courses */}
         <motion.div
           initial="hidden"
           animate="visible"
@@ -374,15 +380,27 @@ export const Dashboard = () => {
                       <span>Due: {course.dueDate}</span>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full mt-2 bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
-                      onClick={() => handleContinueLearning(course.title)}
-                      disabled={isContinuing}
-                    >
-                      {isContinuing ? "Starting Session..." : `Continue ${course.title}`}
-                    </Button>
+                    <div className="mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
+                        onClick={() => handleContinueLearning(course)}
+                        disabled={isContinuing}
+                      >
+                        {isContinuing ? (
+                          <>
+                            <Sparkles className="w-4 h-4 mr-2 animate-spin" />
+                            Generating Plan...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Continue Learning
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </motion.div>
                 ))
               )}
@@ -390,9 +408,7 @@ export const Dashboard = () => {
           </Card>
         </motion.div>
 
-        {/* Today's Tasks and Quick Actions */}
         <div className="space-y-6">
-          {/* Today's Tasks */}
           <motion.div
             initial="hidden"
             animate="visible"
@@ -435,6 +451,8 @@ export const Dashboard = () => {
             </Card>
           </motion.div>
 
+
+
           <PDFUploadCard onUploadComplete={handleUploadComplete} />
         </div>
       </div>
@@ -446,14 +464,4 @@ export const Dashboard = () => {
       />
     </div>
   );
-
-  function handleQuickAction(action: string) {
-    console.log(`Quick action: ${action}`);
-    // Implement your action handlers here
-  }
-
-  function handleGoToAiChat() {
-    console.log("Navigating to AI Chat");
-    // Implement navigation logic here
-  }
 };

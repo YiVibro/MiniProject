@@ -9,7 +9,7 @@ and user preferences using advanced planning algorithms.
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 from .base_agent import BaseAgent, AgentState, AgentResponse
-from models import Lesson, UserProgress, LearningPath
+from ..models import Lesson, UserProgress, LearningPath
 
 class PlannerAgent(BaseAgent):
     """Agent responsible for creating optimized study plans"""

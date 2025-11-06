@@ -11,7 +11,7 @@ import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .tutoring_system import MultiAgentTutoringSystem, SystemConfig
-from models import Lesson, UserProfile, UserProgress, LearningPath
+from .models import Lesson, UserProfile, UserProgress, LearningPath
 from .dynamic_lesson_generator import DynamicLessonGenerator
 from .real_llm_service import RealLLMService
 

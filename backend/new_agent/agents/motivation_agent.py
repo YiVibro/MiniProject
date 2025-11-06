@@ -9,7 +9,7 @@ badges, streaks, and personalized motivation strategies.
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from .base_agent import BaseAgent, AgentState, AgentResponse
-from models import UserProgress, TestResult
+from ..models import UserProgress, TestResult
 
 class MotivationAgent(BaseAgent):
     """Agent responsible for motivation and gamification"""

@@ -8,7 +8,7 @@ adapting explanations based on user proficiency and learning style.
 
 from typing import Dict, Any, List, Optional
 from .base_agent import BaseAgent, AgentState, AgentResponse
-from models import Lesson, UserProgress
+from ..models import Lesson, UserProgress
 
 class KnowledgeAgent(BaseAgent):
     """Agent responsible for dynamic concept explanations"""

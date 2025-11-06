@@ -8,8 +8,8 @@ and question types based on user performance and learning objectives.
 
 from typing import Dict, Any, List, Optional, Tuple
 from .base_agent import BaseAgent, AgentState, AgentResponse
-from models import Assessment, TestResult, Lesson
-from ..assessment_system import AssessmentSystem
+from ..models import Assessment, TestResult, Lesson
+from new_agent.assessment_system import AssessmentSystem
 class PracticeAgent(BaseAgent):
     """Agent responsible for quiz generation and evaluation"""
     

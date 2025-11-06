@@ -1,42 +1,3 @@
-# from fastapi import FastAPI,HTTPException
-# import bcrypt
-# from app.database.db import supabase
-
-# app=FastAPI()
-
-# @app.post("/signup")
-# def signup(name:str,email:str,password:str):
-#     #hash password
-#     hashed_pw=bcrypt.hashpw(password.encode("utf-8"),bcrypt.gensalt()).decode()
-
-#     # Insert into Supabase
-#     response = supabase.table("users").insert({
-#         "name": name,
-#         "email": email,
-#         "password_hash": hashed_pw,
-#         "profile_pic": ""
-#     }).execute()
-
-#     if response.data:
-#         return {"message": "User created", "user": response.data}
-    
-
-# @app.post("/login")
-# def login(email:str,password:str):
-#     #fetch user details
-#     response=supabase.table("users").select("*").eq("email",email).execute()
-
-#     if not response.data:
-#         raise HTTPException(status_code=404, detail="User not found")
-   
-#     user=response.data[0]
-
-#     #verify password
-#     if bcrypt.checkpw(password.encode("utf-8"), user["password_hash"].encode("utf-8")):
-#         return {"message": "Login successful", "user": user}
-#     else:
-#         raise HTTPException(status_code=401, detail="Invalid password")
-
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,13 +37,13 @@ app.add_middleware(
 )
 
 # Import routers
-from app.routes import auth, oauth, agents, dynamic_course
+from app.routes import auth, oauth, agents, course_generator
 
 # Include all routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 app.include_router(agents.router, tags=["Agents"])
-app.include_router(dynamic_course.router)
+app.include_router(course_generator.router, prefix="/course", tags=["Course"])
 
 @app.get("/")
 def root():

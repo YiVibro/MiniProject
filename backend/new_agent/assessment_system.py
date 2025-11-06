@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 import uuid
 from pydantic import BaseModel, Field
-from models import Assessment, TestResult, UserProgress, Lesson
+from .models import Assessment, TestResult, UserProgress, Lesson
 
 class Question(BaseModel):
     """Question model"""
