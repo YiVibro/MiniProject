@@ -15,6 +15,7 @@ import { agentService } from "../lib/agentService";
 import { useToast } from "@/components/ui/use-toast";
 import DynamicCourseGenerator from "./DynamicCourseGenerator";
 import { CourseLearnView } from "./CourseLearnView";
+import { LearningPathView } from "./LearningPathView";
 
 export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
@@ -24,10 +25,11 @@ export const Dashboard = () => {
   const [showQuizGenerationDialog, setShowQuizGenerationDialog] = useState(false);
   const [currentQuizId, setCurrentQuizId] = useState<number | null>(null);
   const [latestDoc, setLatestDoc] = useState<any>(null);
-  const [view, setView] = useState<"dashboard" | "learn" | "quiz">("dashboard");
+  const [view, setView] = useState<"dashboard" | "learn" | "quiz" | "learning-path">("dashboard");
   const [isContinuing, setIsContinuing] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentCourseName, setCurrentCourseName] = useState<string | null>(null);
+  const [currentCourseId, setCurrentCourseId] = useState<string | null>(null); 
   const { toast } = useToast();
 
   const fetchCourses = async () => {
@@ -147,70 +149,105 @@ export const Dashboard = () => {
     }
   };
 
-  const handleContinueLearning = async (course: any) => {
-    if (!user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to continue learning.",
-        variant: "destructive",
-      });
-      return;
-    }
+const handleContinueLearning = async (course: any) => {
+   console.log('handleContinueLearning called with course:', course);
+  console.log('Current user:', user);
 
+  if (!user) {
+    console.error('User is null in handleContinueLearning');
+    toast({
+      title: "Authentication Required",
+      description: "Please log in to continue learning.",
+      variant: "destructive",
+    });
+    return;
+  }
+    if (!user.id) {
+    console.error('User ID is missing:', user);
+    toast({
+      title: "Authentication Error",
+      description: "User information is incomplete. Please log in again.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+
+  try {
+    setIsContinuing(true);
+    
+    const coursePreferences = {
+      subject: course.subject,
+      difficulty: course.difficulty || "beginner",
+      learning_style: course.learning_style || "adaptive"
+    };
+console.log('Creating learning plan with preferences:', coursePreferences);
+    // Get or create learning plan first
+    let plan;
     try {
-      setIsContinuing(true);
-      
-      // Get or create learning plan first
-      let plan;
-      try {
-        plan = await agentService.getLearningPlanStatus(user.id);
-      } catch {
-        plan = await agentService.createLearningPlan({
-          user_id: user.id,
-          user_request: `I want to learn ${course.title}`,
-          preferences: {
-            subject: course.subject,
-            difficulty: course.progress > 50 ? "intermediate" : "beginner",
-            learning_style: "adaptive"
-          }
-        });
-      }
-
-      // Start the learning session
-      const sessionResponse = await agentService.startLearningSession({
+      plan = await agentService.getLearningPlanStatus(user.id);
+    } catch {
+      plan = await agentService.createLearningPlan({
         user_id: user.id,
-        lesson_id: `lesson_${course.title.toLowerCase().replace(/\s+/g, '_')}`,
-        session_preferences: {
-          course_id: course.id,  
-          course_name: course.title,
-          subject: course.subject,
-          difficulty: plan?.requirements?.current_level || "beginner",
-          learning_style: "adaptive",
-          plan_id: plan?.path_id
-        }
+        user_request: `I want to learn ${course.title}`,
+        preferences: coursePreferences
       });
-
-      // Update UI state
-      setCurrentSessionId(sessionResponse.session_id);
-      setCurrentCourseName(course.title);
-      setView("learn");
-
-      toast({
-        title: "Learning Session Started! 🎉",
-        description: `Continuing your ${course.title} journey...`,
-      });
-
-    } catch (error: any) {
-      console.error("Error starting learning session:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to start learning session. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsContinuing(false);
     }
-  };
+
+    // Set the current course name to trigger the LearningPathView
+    setCurrentCourseName(course.title);
+    setView("learning-path");
+
+    toast({
+      title: "Learning Path Loaded! 🎉",
+      description: `Starting your ${course.title} journey...`,
+    });
+
+  } catch (error: any) {
+    console.error("Error starting learning session:", error);
+    toast({
+      title: "Error",
+      description: error.message || "Failed to start learning session. Please try again.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsContinuing(false);
+  }
+};
+
+// Keep only ONE view condition for learning-path:
+if (view === "learning-path" && currentCourseName) {
+  const currentCourse = courses.find(c => c.title === currentCourseName);
+  return (
+    <LearningPathView
+      courseId={currentCourse?.id || ''}
+      courseTitle={currentCourseName}
+      courseSubject={currentCourse?.subject || 'General'}
+      onBack={() => {
+        setView("dashboard");
+        setCurrentCourseName(null);
+        fetchCourses(); // Refresh courses to show updated progress
+      }}
+    />
+  );
+}
+
+// Add this new view state and component
+if (view === "learning-path" && currentCourseName) {
+  const currentCourse = courses.find(c => c.title === currentCourseName);
+  return (
+    <LearningPathView
+      courseId={courses.find(c => c.title === currentCourseName)?.id || ''}
+      courseTitle={currentCourseName}
+      courseSubject={currentCourse?.subject || 'General'}
+      onBack={() => {
+        setView("dashboard");
+        setCurrentCourseName(null);
+        fetchCourses(); // Refresh courses to show updated progress
+      }}
+    />
+  );
+}
 
   if (view === "learn") {
     return (

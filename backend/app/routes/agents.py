@@ -89,7 +89,91 @@ class LearningSessionResponse(BaseModel):
     adaptive_content: Dict[str, Any]
     recommendations: List[str]
 
-# Endpoints
+class CreateAssessmentRequest(BaseModel):
+    lesson_id: str
+    difficulty: str = "medium"
+    num_questions: int = 5
+    question_types: List[str] = ["multiple_choice", "true_false", "short_answer"]
+
+class AssessmentResponse(BaseModel):
+    assessment_id: str
+    questions: List[Dict[str, Any]]
+    time_limit: int
+    passing_score: float
+
+class EvaluateAssessmentRequest(BaseModel):
+    assessment_id: str
+    user_answers: Dict[str, Any]  # question_id -> answer
+    user_id: str
+
+class EvaluateAssessmentResponse(BaseModel):
+    score: float
+    passed: bool
+    gaps: List[Dict[str, Any]]
+    remedial_content: Dict[str, Any]
+    next_steps: List[str]
+
+@router.post("/create-assessment", response_model=AssessmentResponse)
+async def create_assessment(request: CreateAssessmentRequest):
+    """Create an assessment for a lesson"""
+    try:
+        # This would integrate with assessment_system.py
+        # For now, creating a mock assessment
+        assessment_id = f"assessment_{request.lesson_id}_{datetime.now().timestamp()}"
+        
+        # Generate questions based on difficulty and lesson
+        questions = await tutoring_system._generate_assessment_questions(
+            request.lesson_id,
+            request.difficulty,
+            request.num_questions
+        )
+        
+        return AssessmentResponse(
+            assessment_id=assessment_id,
+            questions=questions,
+            time_limit=30,  # minutes
+            passing_score=0.7
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/evaluate-assessment", response_model=EvaluateAssessmentResponse)
+async def evaluate_assessment(request: EvaluateAssessmentRequest):
+    """Evaluate assessment and provide gap analysis"""
+    try:
+        # This would integrate with gap_analysis.py and assessment_system.py
+        score, passed = await tutoring_system._evaluate_assessment(
+            request.assessment_id,
+            request.user_answers
+        )
+        
+        # Get gap analysis
+        gaps = await tutoring_system._analyze_learning_gaps(
+            request.user_id,
+            request.assessment_id,
+            request.user_answers
+        )
+        
+        # Get remedial content
+        remedial_content = await tutoring_system._generate_remedial_content(gaps)
+        
+        # Get next steps recommendations
+        next_steps = await tutoring_system._get_next_steps_recommendations(
+            request.user_id,
+            score,
+            gaps
+        )
+        
+        return EvaluateAssessmentResponse(
+            score=score,
+            passed=passed,
+            gaps=gaps,
+            remedial_content=remedial_content,
+            next_steps=next_steps
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @router.post("/create-learning-plan", response_model=LearningPlanResponse)
 async def create_learning_plan(request: CreateLearningPlanRequest):
     """Create a personalized learning plan based on user request"""

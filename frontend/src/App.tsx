@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "./theme";
-
+import { LearningPathView } from "./components/LearningPathView";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import TextEditor from "./pages/TextEditor";
@@ -137,6 +137,16 @@ const App = () => {
                     <RequireAuth>
                       <Layout>
                         <CoursesPage />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/learn/:courseId"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <LearningPathView />
                       </Layout>
                     </RequireAuth>
                   }
