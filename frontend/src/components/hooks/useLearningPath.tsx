@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/components/ui/use-toast';
-import { agentService, type LearningPathData, type LearningPathNode, type AssessmentResponse, type EvaluateAssessmentResponse } from '@/lib/agentService';
+import { agentService, type LearningPathData, type LearningPathNode, type AssessmentResponse, type EvaluateAssessmentResponse, type ContinueLearningResponse } from '@/lib/agentService';
 import { useAuth } from '@/store/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
 
 export interface LearningPathState {
   data: LearningPathData | null;
@@ -38,6 +39,55 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
   const loadLearningPath = useCallback(async (courseId: string) => {
     console.log('loadLearningPath called with courseId:', courseId);
     console.log('Current user:', user);
+
+    // First, check if we have course data from continue-learning in sessionStorage
+    const courseDataStr = sessionStorage.getItem('currentCourseData');
+    if (courseDataStr) {
+      try {
+        const courseData: ContinueLearningResponse = JSON.parse(courseDataStr);
+        console.log('Found course data in sessionStorage, transforming to LearningPathData');
+        
+        // Transform continue-learning response to LearningPathData format
+        const transformedData: LearningPathData = {
+          path_id: courseData.course_id,
+          title: courseData.learning_path.title || 'Your Course',
+          description: courseData.learning_path.description || '',
+          nodes: courseData.curriculum.map((lesson, index) => ({
+            id: lesson.id,
+            type: 'lesson' as const,
+            title: lesson.title,
+            description: lesson.content?.substring(0, 100) + '...' || `Learn about ${lesson.title}`,
+            status: index < courseData.progress.completed_lessons 
+              ? 'completed' as const 
+              : index === courseData.progress.completed_lessons 
+                ? 'current' as const 
+                : 'locked' as const,
+            duration: lesson.duration || 30,
+            difficulty: lesson.difficulty || 'medium',
+            prerequisites: lesson.prerequisites || [],
+            metadata: {
+              learning_objectives: lesson.learning_objectives || [],
+              content: lesson.content || '',
+              assessment_questions: lesson.assessment_questions || [],
+              practice_exercises: lesson.practice_exercises || []
+            }
+          })),
+          current_node_id: courseData.curriculum[courseData.progress.current_lesson - 1]?.id || courseData.curriculum[0]?.id || '',
+          progress_percentage: courseData.progress.progress_percent,
+          estimated_total_duration: courseData.learning_path.estimated_duration || courseData.curriculum.reduce((sum, l) => sum + (l.duration || 30), 0)
+        };
+        
+        setData(transformedData);
+        const current = transformedData.nodes.find(node => node.id === transformedData.current_node_id);
+        setCurrentLesson(current || null);
+        setProgress(transformedData.progress_percentage);
+        setIsLoading(false);
+        return;
+      } catch (err) {
+        console.error('Error parsing course data from sessionStorage:', err);
+        // Fall through to normal loading
+      }
+    }
 
     if (!user || !user.id) {
       console.error('User not available in loadLearningPath');
@@ -126,17 +176,11 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
 
     try {
       console.log('Completing lesson:', nodeId);
-      // Mark lesson as completed in backend
-      await agentService.trackProgress({
-        user_id: user.id,
-        activity: 'lesson_completed',
-        data: {
-          node_id: nodeId,
-          completion_time: new Date().toISOString()
-        }
-      });
-
-      // Update local state
+      
+      // Update local state first
+      let newProgress = 0;
+      let courseName = '';
+      
       setData(prev => {
         if (!prev) return null;
         
@@ -148,7 +192,7 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
 
         // Calculate new progress
         const completedCount = updatedNodes.filter(n => n.status === 'completed').length;
-        const newProgress = (completedCount / updatedNodes.length) * 100;
+        newProgress = (completedCount / updatedNodes.length) * 100;
 
         setProgress(newProgress);
 
@@ -157,6 +201,62 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
           nodes: updatedNodes,
           progress_percentage: newProgress
         };
+      });
+
+      // Get course name from sessionStorage or use path_id
+      const courseDataStr = sessionStorage.getItem('currentCourseData');
+      if (courseDataStr) {
+        try {
+          const courseData: ContinueLearningResponse = JSON.parse(courseDataStr);
+          courseName = courseData.requirements.topic || courseData.learning_path.title;
+        } catch (e) {
+          console.error('Error parsing course data:', e);
+        }
+      }
+
+      // Update progress in Supabase user_progress table
+      if (courseName) {
+        try {
+          // Find the user_progress record by course_name
+          const { data: progressRecords, error: findError } = await supabase
+            .from('user_progress')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('course_name', courseName)
+            .limit(1);
+
+          if (!findError && progressRecords && progressRecords.length > 0) {
+            // Update existing record
+            const { error: updateError } = await supabase
+              .from('user_progress')
+              .update({ 
+                progress_percent: newProgress,
+                last_updated: new Date().toISOString()
+              })
+              .eq('id', progressRecords[0].id);
+
+            if (updateError) {
+              console.error('Error updating user_progress:', updateError);
+            } else {
+              console.log('Progress updated in Supabase:', newProgress);
+            }
+          } else {
+            console.warn('Could not find user_progress record to update');
+          }
+        } catch (supabaseError) {
+          console.error('Error updating progress in Supabase:', supabaseError);
+        }
+      }
+
+      // Mark lesson as completed in backend
+      await agentService.trackProgress({
+        user_id: user.id,
+        activity: 'lesson_completed',
+        data: {
+          node_id: nodeId,
+          completion_time: new Date().toISOString(),
+          progress_percent: newProgress
+        }
       });
 
       toast({

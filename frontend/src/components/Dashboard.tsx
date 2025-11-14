@@ -150,7 +150,7 @@ export const Dashboard = () => {
   };
 
 const handleContinueLearning = async (course: any) => {
-   console.log('handleContinueLearning called with course:', course);
+  console.log('handleContinueLearning called with course:', course);
   console.log('Current user:', user);
 
   if (!user) {
@@ -162,7 +162,8 @@ const handleContinueLearning = async (course: any) => {
     });
     return;
   }
-    if (!user.id) {
+  
+  if (!user.id) {
     console.error('User ID is missing:', user);
     toast({
       title: "Authentication Error",
@@ -172,42 +173,83 @@ const handleContinueLearning = async (course: any) => {
     return;
   }
 
-
   try {
     setIsContinuing(true);
     
-    const coursePreferences = {
-      subject: course.subject,
-      difficulty: course.difficulty || "beginner",
-      learning_style: course.learning_style || "adaptive"
-    };
-console.log('Creating learning plan with preferences:', coursePreferences);
-    // Get or create learning plan first
-    let plan;
-    try {
-      plan = await agentService.getLearningPlanStatus(user.id);
-    } catch {
-      plan = await agentService.createLearningPlan({
-        user_id: user.id,
-        user_request: `I want to learn ${course.title}`,
-        preferences: coursePreferences
+    // Validate course data
+    if (!course.id && !course.title) {
+      toast({
+        title: "Invalid Course",
+        description: "Course information is missing. Please try again.",
+        variant: "destructive",
       });
+      return;
     }
+    
+    // Prepare request payload - only include defined values
+    const requestPayload: any = {
+      user_id: user.id
+    };
+    
+    // Convert course.id to string if it exists (it might be a number from DB)
+    if (course.id !== undefined && course.id !== null) {
+      requestPayload.course_id = String(course.id);
+    }
+    
+    if (course.title) {
+      requestPayload.course_name = String(course.title);
+    }
+    
+    console.log('Sending continue-learning request:', requestPayload);
+    
+    // Call the new continue-learning endpoint
+    const response = await agentService.continueLearning(requestPayload);
 
-    // Set the current course name to trigger the LearningPathView
+    console.log('Continue learning response:', response);
+
+    // Store course data for LearningPathView
     setCurrentCourseName(course.title);
+    setCurrentCourseId(response.course_id);
+    
+    // Store the full course data in a way that LearningPathView can access it
+    // We'll pass it via state or context, for now store in a ref or pass via props
+    // For simplicity, we'll store it in sessionStorage or pass via route state
+    sessionStorage.setItem('currentCourseData', JSON.stringify(response));
+
+    // Navigate to learning path view
     setView("learning-path");
 
     toast({
-      title: "Learning Path Loaded! 🎉",
-      description: `Starting your ${course.title} journey...`,
+      title: response.progress.completed_lessons > 0 ? "Welcome Back! 🎉" : "Course Generated! 🎉",
+      description: response.progress.completed_lessons > 0 
+        ? `Continuing your ${course.title} journey...` 
+        : `Your personalized ${course.title} course is ready!`,
     });
 
   } catch (error: any) {
-    console.error("Error starting learning session:", error);
+    console.error("Error continuing learning:", error);
+    
+    // Handle FastAPI validation errors (422)
+    let errorMessage = "Failed to continue learning. Please try again.";
+    if (error.response?.data?.detail) {
+      const detail = error.response.data.detail;
+      if (Array.isArray(detail)) {
+        // Format validation errors
+        errorMessage = detail.map((err: any) => 
+          `${err.loc?.join('.')}: ${err.msg}`
+        ).join(', ');
+      } else if (typeof detail === 'string') {
+        errorMessage = detail;
+      } else {
+        errorMessage = JSON.stringify(detail);
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
     toast({
       title: "Error",
-      description: error.message || "Failed to start learning session. Please try again.",
+      description: errorMessage,
       variant: "destructive",
     });
   } finally {
@@ -215,34 +257,19 @@ console.log('Creating learning plan with preferences:', coursePreferences);
   }
 };
 
-// Keep only ONE view condition for learning-path:
+// Learning path view
 if (view === "learning-path" && currentCourseName) {
   const currentCourse = courses.find(c => c.title === currentCourseName);
   return (
     <LearningPathView
-      courseId={currentCourse?.id || ''}
+      courseId={currentCourseId || currentCourse?.id || ''}
       courseTitle={currentCourseName}
       courseSubject={currentCourse?.subject || 'General'}
       onBack={() => {
         setView("dashboard");
         setCurrentCourseName(null);
-        fetchCourses(); // Refresh courses to show updated progress
-      }}
-    />
-  );
-}
-
-// Add this new view state and component
-if (view === "learning-path" && currentCourseName) {
-  const currentCourse = courses.find(c => c.title === currentCourseName);
-  return (
-    <LearningPathView
-      courseId={courses.find(c => c.title === currentCourseName)?.id || ''}
-      courseTitle={currentCourseName}
-      courseSubject={currentCourse?.subject || 'General'}
-      onBack={() => {
-        setView("dashboard");
-        setCurrentCourseName(null);
+        setCurrentCourseId(null);
+        sessionStorage.removeItem('currentCourseData');
         fetchCourses(); // Refresh courses to show updated progress
       }}
     />

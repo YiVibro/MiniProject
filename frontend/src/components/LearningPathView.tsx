@@ -72,7 +72,21 @@ export const LearningPathView: React.FC<LearningPathViewProps> = (props) => {
         setError('Failed to load learning path. Please try again.');
       });
     } else {
-      setError('Course ID is missing');
+      // Try to get course_id from sessionStorage if available
+      const courseDataStr = sessionStorage.getItem('currentCourseData');
+      if (courseDataStr) {
+        try {
+          const courseData = JSON.parse(courseDataStr);
+          loadLearningPath(courseData.course_id).catch(err => {
+            console.error('Failed to load learning path:', err);
+            setError('Failed to load learning path. Please try again.');
+          });
+        } catch (err) {
+          setError('Course ID is missing');
+        }
+      } else {
+        setError('Course ID is missing');
+      }
     }
   }, [courseId, loadLearningPath]);
 

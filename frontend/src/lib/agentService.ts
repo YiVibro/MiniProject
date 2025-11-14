@@ -189,6 +189,57 @@ export interface LearningPathData {
   estimated_total_duration: number;
 }
 
+export interface ContinueLearningRequest {
+  user_id: string;
+  course_id?: string;
+  course_name?: string;
+}
+
+export interface ContinueLearningResponse {
+  course_id: string;
+  learning_goal_id: string;
+  curriculum: Array<{
+    id: string;
+    title: string;
+    difficulty: string;
+    duration: number;
+    content: string;
+    learning_objectives: string[];
+    prerequisites: string[];
+    assessment_questions?: Array<{
+      question: string;
+      type: string;
+      options?: string[];
+      correct_answer?: string;
+      explanation?: string;
+    }>;
+    practice_exercises?: string[];
+  }>;
+  progress: {
+    progress_percent: number;
+    completed_lessons: number;
+    total_lessons: number;
+    current_lesson: number;
+  };
+  requirements: {
+    subject: string;
+    topic: string;
+    difficulty: string;
+    learning_style: string;
+    focus: string;
+    weeks: number;
+    description?: string;
+  };
+  learning_path: {
+    path_id: string;
+    title: string;
+    description: string;
+    estimated_duration: number;
+    difficulty_progression: string[];
+    milestones: string[];
+  };
+}
+
 export class AgentService {
   private baseUrl = '/agents';
 
@@ -385,6 +436,19 @@ export class AgentService {
       console.error('Error in getLearningPath:', error);
       // Return a fallback learning path if everything fails
       return this.getFallbackLearningPath(userId, courseId);
+    }
+  }
+
+  // Continue Learning
+  async continueLearning(request: ContinueLearningRequest): Promise<ContinueLearningResponse> {
+    try {
+      console.log('Calling continue-learning with request:', request);
+      const response = await api.post(`${this.baseUrl}/continue-learning`, request);
+      console.log('Continue learning response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error continuing learning:', error);
+      throw error;
     }
   }
 
