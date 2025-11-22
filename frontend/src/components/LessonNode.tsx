@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,12 @@ import {
   Lock, 
   PlayCircle,
   Target,
-  BarChart3
+  BarChart3,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  HelpCircle,
+  Clock
 } from 'lucide-react';
 import { LearningPathNode } from '@/lib/agentService';
 
@@ -28,6 +33,8 @@ export const LessonNode: React.FC<LessonNodeProps> = ({
   onComplete,
   isCurrent
 }) => {
+  const [expanded, setExpanded] = useState(false);
+
   const getNodeIcon = () => {
     switch (node.type) {
       case 'lesson':
@@ -69,6 +76,10 @@ export const LessonNode: React.FC<LessonNodeProps> = ({
     }
   };
 
+  // ✅ Count total questions from both questions and practice_exercises
+  const totalQuestions = (node.metadata?.questions?.length || 0) + 
+                        (node.metadata?.practice_exercises?.length || 0);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -104,7 +115,8 @@ export const LessonNode: React.FC<LessonNodeProps> = ({
               <p className="text-muted-foreground text-sm mb-2">{node.description}</p>
               
               <div className="flex items-center gap-2 mb-3">
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-xs flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
                   {node.duration} min
                 </Badge>
                 <Badge variant="secondary" className="text-xs capitalize">
@@ -113,12 +125,108 @@ export const LessonNode: React.FC<LessonNodeProps> = ({
                 <Badge variant="outline" className="text-xs capitalize">
                   {node.type}
                 </Badge>
+                
+                {/* ✅ ADD: Questions indicator */}
+                {totalQuestions > 0 && (
+                  <Badge variant="outline" className="text-xs flex items-center gap-1">
+                    <HelpCircle className="h-3 w-3" />
+                    {totalQuestions} Qs
+                  </Badge>
+                )}
               </div>
 
               {/* Prerequisites */}
               {node.prerequisites && node.prerequisites.length > 0 && (
                 <div className="text-xs text-muted-foreground mb-3">
                   Requires: {node.prerequisites.join(', ')}
+                </div>
+              )}
+
+              {/* ✅ ADD: Expandable subtopics section */}
+              {node.metadata?.subtopics && node.metadata.subtopics.length > 0 && (
+                <div className="mt-3 border-t pt-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExpanded(!expanded)}
+                    className="text-xs h-8 px-2"
+                  >
+                    {expanded ? (
+                      <ChevronUp className="h-3 w-3 mr-1" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3 mr-1" />
+                    )}
+                    {expanded ? 'Hide' : 'Show'} Subtopics ({node.metadata.subtopics.length})
+                  </Button>
+                  
+                  {expanded && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-2 space-y-2"
+                    >
+                      {node.metadata.subtopics.map((subtopic: any, idx: number) => (
+                        <div 
+                          key={idx} 
+                          className="flex items-start gap-2 text-sm p-2 bg-muted/30 rounded-lg border"
+                        >
+                          <FileText className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-xs">{subtopic.title}</div>
+                            {subtopic.content && (
+                              <div className="text-muted-foreground text-xs mt-1">
+                                {subtopic.content}
+                              </div>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="text-[10px] flex items-center gap-1 flex-shrink-0">
+                            <Clock className="h-2 w-2" />
+                            {subtopic.duration_minutes || subtopic.deadline_minutes || 10}m
+                          </Badge>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </div>
+              )}
+
+              {/* ✅ ADD: Learning objectives preview */}
+              {node.metadata?.learning_objectives && node.metadata.learning_objectives.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground font-medium mb-1">
+                    Learning Objectives:
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {node.metadata.learning_objectives.slice(0, 3).map((objective: string, idx: number) => (
+                      <Badge key={idx} variant="outline" className="text-[10px]">
+                        {objective.length > 30 ? objective.substring(0, 30) + '...' : objective}
+                      </Badge>
+                    ))}
+                    {node.metadata.learning_objectives.length > 3 && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        +{node.metadata.learning_objectives.length - 3} more
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ ADD: Questions preview */}
+              {node.metadata?.questions && node.metadata.questions.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground font-medium">
+                    Includes {node.metadata.questions.length} quiz question{node.metadata.questions.length > 1 ? 's' : ''}
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ ADD: Practice exercises preview */}
+              {node.metadata?.practice_exercises && node.metadata.practice_exercises.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground font-medium">
+                    Includes {node.metadata.practice_exercises.length} practice exercise{node.metadata.practice_exercises.length > 1 ? 's' : ''}
+                  </div>
                 </div>
               )}
             </div>

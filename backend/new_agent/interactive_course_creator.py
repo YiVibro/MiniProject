@@ -1,39 +1,45 @@
 #!/usr/bin/env python3
 """
-Interactive Course Creator
-=========================
+Interactive Course Creator - Web Backend Service
+==============================================
 
-A terminal-based application that creates dynamic courses based on user requirements
-using LLM-powered lesson generation.
+Handles dynamic course creation and interaction for website.
+Replaces terminal-based CLI with async service methods.
 """
 
 import asyncio
-import sys
 import json
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+import os
+import uuid
+from .enhanced_tutoring_system import EnhancedTutoringSystem, SystemConfig
+from .models import UserProfile, UserProgress
+from .dynamic_lesson_generator import DynamicLessonGenerator
 
-from new_agent.enhanced_tutoring_system import EnhancedTutoringSystem, SystemConfig
-from new_agent.models import UserProfile, UserProgress
-from new_agent.dynamic_lesson_generator import DynamicLessonGenerator
 
 class InteractiveCourseCreator:
-    """Interactive terminal application for creating dynamic courses"""
+    """Backend service for interactive course creation and management"""
     
     def __init__(self):
         self.system = None
-        self.current_user = None
-        self.current_course = None
+        self.user_courses: Dict[str, Any] = {}  # Store user courses
+        self.learning_sessions: Dict[str, Any] = {}  # Store active sessions
         
     async def initialize_system(self):
         """Initialize the tutoring system"""
-        print("🚀 Initializing Dynamic Learning System...")
+        if self.system is not None:
+            return  # Already initialized
+        
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable not set!")
         
         config = SystemConfig(
             llm_provider="google",
-            llm_api_key="demo-key",
-            llm_model="gemini-pro",
+            llm_api_key=api_key,
+            llm_model="gemini-2.5-flash",
             enable_analytics=True,
             enable_gap_analysis=True,
             enable_learning_curves=True,
@@ -41,364 +47,492 @@ class InteractiveCourseCreator:
         )
         
         self.system = EnhancedTutoringSystem(config)
-        print("✅ System initialized successfully!")
+        return {"status": "initialized", "message": "System ready"}
+
+    # ========================================================================
+    # COURSE CREATION ENDPOINTS
+    # ========================================================================
     
-    def display_welcome(self):
-        """Display welcome message"""
-        print("\n" + "="*60)
-        print("🎓 DYNAMIC COURSE CREATOR")
-        print("="*60)
-        print("Create personalized courses using AI-powered lesson generation!")
-        print("No hardcoded content - everything is generated dynamically.")
-        print("="*60)
-    
-    def get_user_profile(self) -> UserProfile:
-        """Get user profile information"""
-        print("\n👤 Let's create your learning profile...")
-        
-        name = input("📝 Your name: ").strip() or "Learner"
-        email = input("📧 Your email: ").strip() or f"{name.lower()}@example.com"
-        
-        print("\n🎯 Learning Style (choose one):")
-        print("1. Visual - Learn through diagrams, charts, and visual aids")
-        print("2. Auditory - Learn through listening and verbal explanations")
-        print("3. Kinesthetic - Learn through hands-on activities and movement")
-        print("4. Analytical - Learn through detailed analysis and logical structure")
-        print("5. Practical - Learn through real-world applications")
-        print("6. Balanced - Mix of all styles")
-        
-        style_choice = input("Choose (1-6): ").strip()
-        style_map = {
-            "1": "visual", "2": "auditory", "3": "kinesthetic",
-            "4": "analytical", "5": "practical", "6": "balanced"
-        }
-        learning_style = style_map.get(style_choice, "balanced")
-        
-        print("\n📊 Difficulty Level:")
-        print("1. Beginner - New to the subject")
-        print("2. Intermediate - Some experience")
-        print("3. Advanced - Experienced learner")
-        
-        level_choice = input("Choose (1-3): ").strip()
-        level_map = {"1": "beginner", "2": "intermediate", "3": "advanced"}
-        difficulty = level_map.get(level_choice, "intermediate")
-        
-        time_input = input("⏰ Available time per day (minutes): ").strip()
-        try:
-            available_time = int(time_input) if time_input else 60
-        except ValueError:
-            available_time = 60
-        
-        goals_input = input("🎯 Learning goals (comma-separated): ").strip()
-        goals = [goal.strip() for goal in goals_input.split(",")] if goals_input else ["Master the subject"]
-        
-        interests_input = input("💡 Areas of interest (comma-separated): ").strip()
-        interests = [interest.strip() for interest in interests_input.split(",")] if interests_input else []
-        
-        user_id = f"user_{hash(name + email) % 10000}"
+    async def create_user_profile(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create user profile from website form data"""
+        name = user_data.get("name", "Learner")
+        email = user_data.get("email", f"{name.lower()}@example.com")
+        learning_style = user_data.get("learning_style", "balanced")
+        preferred_difficulty = user_data.get("preferred_difficulty", "intermediate")
+        available_time = user_data.get("available_time", 60)
+        learning_goals = user_data.get("learning_goals", ["Master the subject"])
+        interests = user_data.get("interests", [])
+        user_id = user_data.get("user_id", f"user_{uuid.uuid4()}")
         
         profile = UserProfile(
             user_id=user_id,
             name=name,
             email=email,
             learning_style=learning_style,
-            preferred_difficulty=difficulty,
+            preferred_difficulty=preferred_difficulty,
             available_time=available_time,
-            learning_goals=goals,
+            learning_goals=learning_goals,
             interests=interests
         )
         
-        print(f"\n✅ Profile created for {name}")
-        return profile
-    
-    def get_course_requirements(self) -> Dict[str, Any]:
-        """Get course requirements from user"""
-        print("\n📚 Let's design your course...")
-        
-        subject = input("📖 Subject/Topic (e.g., Python, Machine Learning, Web Development): ").strip()
-        if not subject:
-            subject = "General Programming"
-        
-        print(f"\n🎯 What do you want to learn about {subject}?")
-        topic = input("Specific topic or area: ").strip()
-        if not topic:
-            topic = "Fundamentals"
-        
-        print("\n⏱️ Course Duration:")
-        print("1. 2 weeks (6 lessons)")
-        print("2. 1 month (12 lessons)")
-        print("3. 2 months (24 lessons)")
-        print("4. 3 months (36 lessons)")
-        print("5. 6 months (48 lessons)")
-        print("6. Custom")
-        
-        duration_choice = input("Choose (1-6): ").strip()
-        duration_map = {
-            "1": 2, "2": 4, "3": 8, "4": 12, "5": 24, "6": None
-        }
-        weeks = duration_map.get(duration_choice)
-        
-        if weeks is None:  # Custom duration
-            try:
-                weeks = int(input("Enter number of weeks: ").strip())
-            except ValueError:
-                weeks = 4
-        
-        print("\n🎓 Course Focus:")
-        print("1. Theory-focused - Deep understanding of concepts")
-        print("2. Practice-focused - Hands-on exercises and projects")
-        print("3. Balanced - Mix of theory and practice")
-        print("4. Project-based - Build real-world projects")
-        
-        focus_choice = input("Choose (1-4): ").strip()
-        focus_map = {
-            "1": "theoretical", "2": "practical", "3": "balanced", "4": "project-based"
-        }
-        focus = focus_map.get(focus_choice, "balanced")
-        
-        assessment_pref = input("\n📝 Include assessments? (y/n): ").strip().lower() == 'y'
-        
         return {
-            "subject": subject,
-            "topic": topic,
-            "weeks": weeks,
-            "focus": focus,
-            "assessments": assessment_pref
+            "user_id": user_id,
+            "name": name,
+            "email": email,
+            "learning_style": learning_style,
+            "preferred_difficulty": preferred_difficulty,
+            "available_time": available_time,
+            "learning_goals": learning_goals,
+            "interests": interests,
+            "created_at": datetime.utcnow().isoformat()
         }
     
-    async def create_course(self, user_profile: UserProfile, requirements: Dict[str, Any]):
-        """Create a dynamic course based on requirements"""
-        print(f"\n🤖 Creating your {requirements['subject']} course...")
-        print("This may take a moment as we generate personalized content...")
+    async def create_course(self, user_id: str, course_requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a dynamic course based on requirements
         
-        # Create user in system
-        self.system.user_profiles[user_profile.user_id] = user_profile
-        self.current_user = user_profile
+        Args:
+            user_id: User ID
+            course_requirements: {
+                "subject": str,
+                "topic": str,
+                "weeks": int,
+                "focus": str,  # theoretical, practical, balanced, project-based
+                "assessments": bool
+            }
+        """
+        await self.initialize_system()
+        
+        subject = course_requirements.get("subject", "General Programming")
+        topic = course_requirements.get("topic", "Fundamentals")
+        weeks = course_requirements.get("weeks", 4)
+        focus = course_requirements.get("focus", "balanced")
+        assessments = course_requirements.get("assessments", True)
+        
+        # Get user profile (should exist from create_user_profile call)
+        if user_id not in self.system.user_profiles:
+            raise ValueError(f"User profile not found for {user_id}")
+        
+        user_profile = self.system.user_profiles[user_id]
         
         # Generate curriculum
         curriculum = await self.system.create_dynamic_curriculum(
-            subject=requirements["subject"],
+            subject=subject,
             level=user_profile.preferred_difficulty,
-            duration_weeks=requirements["weeks"],
+            duration_weeks=weeks,
             user_profile=user_profile
         )
         
         # Create learning path
         path_id = await self.system.create_personalized_learning_path(
-            user_id=user_profile.user_id,
-            user_request=f"Learn {requirements['subject']} focusing on {requirements['topic']} with {requirements['focus']} approach",
+            user_id=user_id,
+            user_request=f"Learn {subject} focusing on {topic} with {focus} approach",
             user_profile=user_profile
         )
         
-        self.current_course = {
+        # Create course object
+        course_id = str(uuid.uuid4())
+        course = {
+            "course_id": course_id,
+            "user_id": user_id,
             "path_id": path_id,
-            "curriculum": curriculum,
-            "requirements": requirements
+            "subject": subject,
+            "topic": topic,
+            "title": f"{subject} - {topic}",
+            "description": f"A personalized {focus} course on {subject}",
+            "difficulty": user_profile.preferred_difficulty,
+            "learning_style": user_profile.learning_style,
+            "focus": focus,
+            "weeks": weeks,
+            "total_duration_minutes": sum(lesson.duration for lesson in curriculum),
+            "total_lessons": len(curriculum),
+            "assessments_enabled": assessments,
+            "lessons": [
+                {
+                    "lesson_id": lesson.lesson_id,
+                    "title": lesson.title,
+                    "duration": lesson.duration,
+                    "difficulty": lesson.difficulty,
+                    "learning_objectives": lesson.learning_objectives,
+                    "prerequisites": lesson.prerequisites or [],
+                    "content": lesson.content,
+                    "assessment_questions": lesson.assessment_questions or [],
+                    "practice_exercises": lesson.practice_exercises or [],
+                    "status": "locked",
+                    "progress": 0,
+                    "completed": False
+                }
+                for lesson in curriculum
+            ],
+            "created_at": datetime.utcnow().isoformat(),
+            "progress": 0,
+            "completed": False
         }
         
-        print(f"✅ Course created successfully!")
-        return curriculum
-    
-    def display_course_overview(self, curriculum: List):
-        """Display course overview"""
-        print(f"\n📋 YOUR COURSE OVERVIEW")
-        print("="*50)
+        # Unlock first lesson
+        if course["lessons"]:
+            course["lessons"][0]["status"] = "available"
         
-        learning_path = self.system.learning_paths[self.current_course["path_id"]]
+        # Store course
+        self.user_courses[course_id] = course
         
-        print(f"📚 Course: {learning_path.title}")
-        print(f"📝 Description: {learning_path.description}")
-        print(f"⏱️ Duration: {learning_path.estimated_duration} minutes")
-        print(f"📖 Lessons: {len(curriculum)}")
-        print(f"🎯 Difficulty: {self.current_user.preferred_difficulty}")
-        print(f"🎨 Learning Style: {self.current_user.learning_style}")
-        
-        print(f"\n📚 LESSON BREAKDOWN:")
-        print("-"*30)
-        for i, lesson in enumerate(curriculum, 1):
-            print(f"{i:2d}. {lesson.title}")
-            print(f"    Duration: {lesson.duration} min | Difficulty: {lesson.difficulty}")
-            if lesson.learning_objectives:
-                print(f"    Objectives: {lesson.learning_objectives[0]}")
-            print()
-    
-    def display_lesson_details(self, lesson, lesson_number: int):
-        """Display detailed lesson information"""
-        print(f"\n📖 LESSON {lesson_number}: {lesson.title}")
-        print("="*60)
-        
-        print(f"⏱️ Duration: {lesson.duration} minutes")
-        print(f"🎯 Difficulty: {lesson.difficulty}")
-        
-        print(f"\n🎯 LEARNING OBJECTIVES:")
-        for i, objective in enumerate(lesson.learning_objectives, 1):
-            print(f"   {i}. {objective}")
-        
-        if lesson.prerequisites:
-            print(f"\n📋 PREREQUISITES:")
-            for prereq in lesson.prerequisites:
-                print(f"   • {prereq}")
-        
-        print(f"\n📝 CONTENT PREVIEW:")
-        content_preview = lesson.content[:300] + "..." if len(lesson.content) > 300 else lesson.content
-        print(content_preview)
-        
-        if lesson.assessment_questions:
-            print(f"\n❓ ASSESSMENT QUESTIONS: {len(lesson.assessment_questions)}")
-            for i, question in enumerate(lesson.assessment_questions[:2], 1):
-                print(f"   {i}. {question.get('question', 'Question')}")
-        
-        if lesson.practice_exercises:
-            print(f"\n💪 PRACTICE EXERCISES: {len(lesson.practice_exercises)}")
-            for i, exercise in enumerate(lesson.practice_exercises[:2], 1):
-                print(f"   {i}. {exercise}")
-    
-    def show_course_menu(self):
-        """Show course interaction menu"""
-        while True:
-            print(f"\n🎓 COURSE MENU")
-            print("="*30)
-            print("1. View course overview")
-            print("2. Browse lessons")
-            print("3. View specific lesson")
-            print("4. Start learning session")
-            print("5. Create new course")
-            print("6. Exit")
-            
-            choice = input("\nChoose an option (1-6): ").strip()
-            
-            if choice == "1":
-                self.display_course_overview(self.current_course["curriculum"])
-            elif choice == "2":
-                self.browse_lessons()
-            elif choice == "3":
-                self.view_specific_lesson()
-            elif choice == "4":
-                self.start_learning_session()
-            elif choice == "5":
-                return "new_course"
-            elif choice == "6":
-                return "exit"
-            else:
-                print("❌ Invalid choice. Please try again.")
-    
-    def browse_lessons(self):
-        """Browse through lessons"""
-        curriculum = self.current_course["curriculum"]
-        
-        print(f"\n📚 LESSON BROWSER")
-        print("="*30)
-        
-        for i, lesson in enumerate(curriculum, 1):
-            print(f"{i:2d}. {lesson.title}")
-            print(f"    Duration: {lesson.duration} min | Difficulty: {lesson.difficulty}")
-            print()
-        
-        print("Enter lesson number to view details, or 'back' to return to menu.")
-        choice = input("Choice: ").strip()
-        
-        if choice.lower() == 'back':
-            return
-        
-        try:
-            lesson_num = int(choice)
-            if 1 <= lesson_num <= len(curriculum):
-                self.display_lesson_details(curriculum[lesson_num - 1], lesson_num)
-            else:
-                print("❌ Invalid lesson number.")
-        except ValueError:
-            print("❌ Please enter a valid number.")
-    
-    def view_specific_lesson(self):
-        """View a specific lesson"""
-        curriculum = self.current_course["curriculum"]
-        
-        try:
-            lesson_num = int(input(f"Enter lesson number (1-{len(curriculum)}): ").strip())
-            if 1 <= lesson_num <= len(curriculum):
-                self.display_lesson_details(curriculum[lesson_num - 1], lesson_num)
-            else:
-                print("❌ Invalid lesson number.")
-        except ValueError:
-            print("❌ Please enter a valid number.")
-    
-    async def start_learning_session(self):
-        """Start a learning session"""
-        curriculum = self.current_course["curriculum"]
-        
-        print(f"\n🎯 START LEARNING SESSION")
-        print("="*40)
-        
-        try:
-            lesson_num = int(input(f"Which lesson to start with (1-{len(curriculum)}): ").strip())
-            if 1 <= lesson_num <= len(curriculum):
-                lesson = curriculum[lesson_num - 1]
-                
-                print(f"\n🚀 Starting session for: {lesson.title}")
-                print("Session features:")
-                print("• Interactive explanations")
-                print("• Adaptive content")
-                print("• Real-time feedback")
-                print("• Progress tracking")
-                
-                # Start actual learning session
-                session_id = await self.system.start_learning_session(
-                    self.current_user.user_id, 
-                    lesson.lesson_id
-                )
-                
-                print(f"✅ Session started: {session_id}")
-                print("🎓 Happy learning!")
-                
-            else:
-                print("❌ Invalid lesson number.")
-        except ValueError:
-            print("❌ Please enter a valid number.")
-    
-    async def run(self):
-        """Main application loop"""
-        self.display_welcome()
-        
-        # Initialize system
-        await self.initialize_system()
-        
-        while True:
-            try:
-                # Get user profile
-                user_profile = self.get_user_profile()
-                
-                # Get course requirements
-                requirements = self.get_course_requirements()
-                
-                # Create course
-                curriculum = await self.create_course(user_profile, requirements)
-                
-                # Display course overview
-                self.display_course_overview(curriculum)
-                
-                # Show course menu
-                menu_result = self.show_course_menu()
-                
-                if menu_result == "exit":
-                    print("\n👋 Thank you for using the Dynamic Course Creator!")
-                    print("🎓 Happy learning!")
-                    break
-                elif menu_result == "new_course":
-                    print("\n🔄 Creating a new course...")
-                    continue
-                
-            except KeyboardInterrupt:
-                print("\n\n👋 Goodbye!")
-                break
-            except Exception as e:
-                print(f"\n❌ An error occurred: {e}")
-                print("Please try again.")
+        return course
 
-async def main():
-    """Main function"""
-    app = InteractiveCourseCreator()
-    await app.run()
+    # ========================================================================
+    # COURSE BROWSING ENDPOINTS
+    # ========================================================================
+    
+    async def get_user_courses(self, user_id: str) -> Dict[str, Any]:
+        """Get all courses for a user"""
+        user_courses = [
+            course for course in self.user_courses.values()
+            if course.get("user_id") == user_id
+        ]
+        
+        return {
+            "user_id": user_id,
+            "courses": user_courses,
+            "total_count": len(user_courses)
+        }
+    
+    async def get_course_overview(self, course_id: str) -> Dict[str, Any]:
+        """Get course overview and structure"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        
+        return {
+            "course_id": course_id,
+            "title": course["title"],
+            "description": course["description"],
+            "subject": course["subject"],
+            "topic": course["topic"],
+            "duration_minutes": course["total_duration_minutes"],
+            "total_lessons": course["total_lessons"],
+            "difficulty": course["difficulty"],
+            "learning_style": course["learning_style"],
+            "focus": course["focus"],
+            "progress": course["progress"],
+            "completed": course["completed"],
+            "lessons": course["lessons"],
+            "created_at": course["created_at"]
+        }
 
-if __name__ == "__main__":
-    print("🎓 Starting Dynamic Course Creator...")
-    asyncio.run(main())
+    # ========================================================================
+    # LESSON INTERACTION ENDPOINTS
+    # ========================================================================
+    
+    async def get_lesson(self, course_id: str, lesson_id: str) -> Dict[str, Any]:
+        """Get lesson details"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        lesson = next((l for l in course["lessons"] if l["lesson_id"] == lesson_id), None)
+        
+        if not lesson:
+            raise ValueError(f"Lesson {lesson_id} not found in course {course_id}")
+        
+        return lesson
+    
+    async def start_lesson(self, course_id: str, lesson_id: str, user_id: str) -> Dict[str, Any]:
+        """Start a learning session for a lesson"""
+        lesson = await self.get_lesson(course_id, lesson_id)
+        
+        if lesson["status"] == "locked":
+            raise ValueError(f"Lesson {lesson_id} is locked. Complete prerequisites first.")
+        
+        session_id = str(uuid.uuid4())
+        
+        # Update lesson status
+        lesson["status"] = "in-progress"
+        
+        # Create session
+        session = {
+            "session_id": session_id,
+            "course_id": course_id,
+            "lesson_id": lesson_id,
+            "user_id": user_id,
+            "started_at": datetime.utcnow().isoformat(),
+            "status": "active",
+            "progress": 0
+        }
+        
+        self.learning_sessions[session_id] = session
+        
+        return session
+
+    async def update_lesson_progress(
+        self, 
+        course_id: str, 
+        lesson_id: str, 
+        progress: float, 
+        completed: bool = False,
+        answers: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """Update lesson progress"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        lesson = next((l for l in course["lessons"] if l["lesson_id"] == lesson_id), None)
+        
+        if not lesson:
+            raise ValueError(f"Lesson {lesson_id} not found")
+        
+        # Update lesson progress
+        lesson["progress"] = progress
+        lesson["completed"] = completed
+        
+        if completed:
+            lesson["status"] = "completed"
+            
+            # Unlock next lesson
+            lesson_index = next(
+                i for i, l in enumerate(course["lessons"]) 
+                if l["lesson_id"] == lesson_id
+            )
+            if lesson_index + 1 < len(course["lessons"]):
+                course["lessons"][lesson_index + 1]["status"] = "available"
+        
+        # Update course progress
+        completed_lessons = sum(1 for l in course["lessons"] if l["completed"])
+        course["progress"] = (completed_lessons / len(course["lessons"])) * 100
+        
+        return {
+            "lesson_id": lesson_id,
+            "course_id": course_id,
+            "progress": progress,
+            "completed": completed,
+            "course_progress": course["progress"],
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+    # ========================================================================
+    # ASSESSMENT ENDPOINTS
+    # ========================================================================
+    
+    async def submit_assessment(
+        self,
+        course_id: str,
+        lesson_id: str,
+        user_id: str,
+        answers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Submit assessment answers and get evaluation
+        Uses assessment_system to evaluate
+        """
+        lesson = await self.get_lesson(course_id, lesson_id)
+        
+        if not lesson["assessment_questions"]:
+            return {
+                "lesson_id": lesson_id,
+                "score": 100,
+                "message": "No assessment for this lesson"
+            }
+        
+        # TODO: Integrate with assessment_system.py for actual evaluation
+        # For now, return mock evaluation
+        
+        correct_count = len(answers)  # Mock: assume all correct
+        total_questions = len(lesson["assessment_questions"])
+        score = (correct_count / total_questions * 100) if total_questions > 0 else 100
+        
+        result = {
+            "lesson_id": lesson_id,
+            "course_id": course_id,
+            "score": score,
+            "correct_count": correct_count,
+            "total_questions": total_questions,
+            "feedback": [
+                "Great effort! Review any incorrect answers.",
+                "Focus on practice exercises for better retention."
+            ],
+            "mastered_topics": lesson["learning_objectives"][:2] if score >= 80 else [],
+            "knowledge_gaps": lesson["learning_objectives"][2:] if score < 80 else [],
+            "recommendations": [
+                "Continue to next lesson" if score >= 70 else "Review this lesson before proceeding"
+            ],
+            "submitted_at": datetime.utcnow().isoformat()
+        }
+        
+        return result
+
+    # ========================================================================
+    # PROGRESS & ANALYTICS ENDPOINTS
+    # ========================================================================
+    
+    async def get_course_progress(self, course_id: str) -> Dict[str, Any]:
+        """Get overall course progress"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        
+        completed_lessons = sum(1 for l in course["lessons"] if l["completed"])
+        current_lesson = next(
+            (l for l in course["lessons"] if l["status"] == "in-progress"),
+            None
+        )
+        
+        return {
+            "course_id": course_id,
+            "title": course["title"],
+            "completion_percentage": course["progress"],
+            "lessons_completed": completed_lessons,
+            "total_lessons": course["total_lessons"],
+            "current_lesson": current_lesson["title"] if current_lesson else None,
+            "time_spent": 0,  # TODO: Calculate from sessions
+            "estimated_time_remaining": course["total_duration_minutes"],
+            "status": "completed" if course["completed"] else "in-progress",
+            "created_at": course["created_at"]
+        }
+
+    async def get_learning_curve(self, course_id: str) -> Dict[str, Any]:
+        """Get learning curve analytics"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        
+        # TODO: Integrate with learning_curve.py for actual analytics
+        # For now return mock data
+        
+        return {
+            "course_id": course_id,
+            "data_points": [
+                {
+                    "lesson_index": i,
+                    "lesson_title": lesson["title"],
+                    "score": lesson["progress"]
+                }
+                for i, lesson in enumerate(course["lessons"])
+            ],
+            "trend": "improving",
+            "average_score": course["progress"],
+            "learning_velocity": 5.0
+        }
+
+    # ========================================================================
+    # PRACTICE ENDPOINTS
+    # ========================================================================
+    
+    async def get_practice_questions(
+        self,
+        course_id: str,
+        lesson_id: str,
+        count: int = 5
+    ) -> Dict[str, Any]:
+        """Get practice questions for a lesson"""
+        lesson = await self.get_lesson(course_id, lesson_id)
+        
+        exercises = lesson.get("practice_exercises", [])
+        selected_exercises = exercises[:count]
+        
+        return {
+            "lesson_id": lesson_id,
+            "course_id": course_id,
+            "total_available": len(exercises),
+            "questions": [
+                {
+                    "id": f"q{i}",
+                    "question": exercise,
+                    "type": "practice",
+                    "difficulty": lesson["difficulty"]
+                }
+                for i, exercise in enumerate(selected_exercises)
+            ]
+        }
+
+    # ========================================================================
+    # RECOMMENDATIONS ENDPOINTS
+    # ========================================================================
+    
+    async def get_learning_recommendations(self, course_id: str, user_id: str) -> Dict[str, Any]:
+        """Get AI-powered learning recommendations"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        
+        # TODO: Integrate with mdp_learning.py for actual recommendations
+        
+        # Find lowest progress lessons
+        low_progress_lessons = sorted(
+            course["lessons"],
+            key=lambda l: l["progress"]
+        )[:3]
+        
+        return {
+            "course_id": course_id,
+            "user_id": user_id,
+            "recommendations": [
+                {
+                    "type": "review",
+                    "lesson_id": lesson["lesson_id"],
+                    "lesson_title": lesson["title"],
+                    "reason": "Low mastery - needs review",
+                    "priority": "high"
+                }
+                for lesson in low_progress_lessons
+                if not lesson["completed"]
+            ],
+            "next_best_action": "Review concepts with low mastery",
+            "priority_topics": [
+                lesson["title"] for lesson in low_progress_lessons
+            ]
+        }
+
+    # ========================================================================
+    # GAP ANALYSIS ENDPOINTS
+    # ========================================================================
+    
+    async def analyze_knowledge_gaps(self, course_id: str, user_id: str) -> Dict[str, Any]:
+        """Analyze knowledge gaps and provide remedial content"""
+        if course_id not in self.user_courses:
+            raise ValueError(f"Course {course_id} not found")
+        
+        course = self.user_courses[course_id]
+        
+        # TODO: Integrate with gap_analysis.py for actual gap analysis
+        
+        gaps = []
+        for lesson in course["lessons"]:
+            if lesson["progress"] < 70:
+                gaps.extend(lesson["learning_objectives"])
+        
+        return {
+            "course_id": course_id,
+            "user_id": user_id,
+            "identified_gaps": list(set(gaps)),
+            "remedial_lessons": [
+                {
+                    "lesson_id": lesson["lesson_id"],
+                    "title": f"Remedial: {lesson['title']}",
+                    "duration": lesson["duration"] + 15,
+                    "focus": "Remedial"
+                }
+                for lesson in course["lessons"]
+                if lesson["progress"] < 70
+            ],
+            "estimated_remedial_time": sum(
+                lesson["duration"] + 15 for lesson in course["lessons"] 
+                if lesson["progress"] < 70
+            ),
+            "priority": "high" if len(gaps) > 5 else "medium"
+        }
+
+
+# Global instance for easy access
+_course_creator = None
+
+async def get_course_creator() -> InteractiveCourseCreator:
+    """Get or create the InteractiveCourseCreator instance"""
+    global _course_creator
+    if _course_creator is None:
+        _course_creator = InteractiveCourseCreator()
+        await _course_creator.initialize_system()
+    return _course_creator
+

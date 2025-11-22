@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Sparkles } from "lucide-react";
+import { Plus, BookOpen, Target, TrendingUp, Clock, Award, Sparkles, ArrowRight, Loader2 } from "lucide-react";
 import { CreateGoalDialog } from "./CreateGoalDialog";
 import { useAuth } from "../store/AuthContext";
 import { supabase } from "../lib/supabaseClient";
@@ -21,16 +21,66 @@ export const Dashboard = () => {
   const [showCreateGoal, setShowCreateGoal] = useState(false);
   const { user } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false); 
+  const [loading, setLoading] = useState(false);
   const [showQuizGenerationDialog, setShowQuizGenerationDialog] = useState(false);
   const [currentQuizId, setCurrentQuizId] = useState<number | null>(null);
   const [latestDoc, setLatestDoc] = useState<any>(null);
-  const [view, setView] = useState<"dashboard" | "learn" | "quiz" | "learning-path">("dashboard");
+  const [view, setView] = useState<"dashboard" | "learn" | "quiz" | "learning-path" | "courses">("dashboard");
   const [isContinuing, setIsContinuing] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentCourseName, setCurrentCourseName] = useState<string | null>(null);
-  const [currentCourseId, setCurrentCourseId] = useState<string | null>(null); 
+  const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
   const { toast } = useToast();
+  const [currentCourseData, setCurrentCourseData] = useState<any>(null);
+  
+  // ✅ ADD: State to track which courses exist in DB
+  const [coursesWithGeneration, setCoursesWithGeneration] = useState<Set<string>>(new Set());
+
+  // ✅ ADD: Function to check if course exists in DB
+  const checkCourseExists = async (userId: string, courseName: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/agents/check-course-exists`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, course_name: courseName })
+      });
+      
+      const data = await response.json();
+      return data.exists;
+    } catch (error) {
+      console.error('Error checking course existence:', error);
+      return false;
+    }
+  };
+
+  // ✅ ADD: useEffect to check courses on load
+  useEffect(() => {
+    const checkExistingCourses = async () => {
+      if (!user?.id || !courses) return;
+      
+      const existingCourses = new Set<string>();
+      
+      for (const course of courses) {
+        const exists = await checkCourseExists(user.id, course.title);
+        if (exists) {
+          existingCourses.add(course.title);
+        }
+      }
+      
+      setCoursesWithGeneration(existingCourses);
+    };
+    
+    checkExistingCourses();
+  }, [user?.id, courses]);
+
+  // ✅ ADD: Helper functions for button text and icon
+  const getButtonText = (courseTitle: string) => {
+    return coursesWithGeneration.has(courseTitle) ? 'Continue Learning' : 'Generate Course';
+  };
+
+  const getButtonIcon = (courseTitle: string) => {
+    return coursesWithGeneration.has(courseTitle) ? <ArrowRight className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />;
+  };
 
   const fetchCourses = async () => {
     if (!user) return;
@@ -97,9 +147,9 @@ export const Dashboard = () => {
       .channel('user_progress_updates')
       .on(
         'postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
+        {
+          event: '*',
+          schema: 'public',
           table: 'user_progress',
           filter: `user_id=eq.${user.id}`
         },
@@ -149,132 +199,157 @@ export const Dashboard = () => {
     }
   };
 
-const handleContinueLearning = async (course: any) => {
-  console.log('handleContinueLearning called with course:', course);
-  console.log('Current user:', user);
+  // ✅ UPDATED: handleContinueLearning with button state management
+  const handleContinueLearning = async (course: any) => {
+    console.log('handleContinueLearning called with course:', course);
+    console.log('Current user:', user);
 
-  if (!user) {
-    console.error('User is null in handleContinueLearning');
-    toast({
-      title: "Authentication Required",
-      description: "Please log in to continue learning.",
-      variant: "destructive",
-    });
-    return;
-  }
-  
-  if (!user.id) {
-    console.error('User ID is missing:', user);
-    toast({
-      title: "Authentication Error",
-      description: "User information is incomplete. Please log in again.",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  try {
-    setIsContinuing(true);
-    
-    // Validate course data
-    if (!course.id && !course.title) {
+    if (!user) {
+      console.error('User is null in handleContinueLearning');
       toast({
-        title: "Invalid Course",
-        description: "Course information is missing. Please try again.",
+        title: "Authentication Required",
+        description: "Please log in to continue learning.",
         variant: "destructive",
       });
       return;
     }
-    
-    // Prepare request payload - only include defined values
-    const requestPayload: any = {
-      user_id: user.id
-    };
-    
-    // Convert course.id to string if it exists (it might be a number from DB)
-    if (course.id !== undefined && course.id !== null) {
-      requestPayload.course_id = String(course.id);
+
+    if (!user.id) {
+      console.error('User ID is missing:', user);
+      toast({
+        title: "Authentication Error",
+        description: "User information is incomplete. Please log in again.",
+        variant: "destructive",
+      });
+      return;
     }
-    
-    if (course.title) {
-      requestPayload.course_name = String(course.title);
-    }
-    
-    console.log('Sending continue-learning request:', requestPayload);
-    
-    // Call the new continue-learning endpoint
-    const response = await agentService.continueLearning(requestPayload);
 
-    console.log('Continue learning response:', response);
+    try {
+      setIsContinuing(true);
 
-    // Store course data for LearningPathView
-    setCurrentCourseName(course.title);
-    setCurrentCourseId(response.course_id);
-    
-    // Store the full course data in a way that LearningPathView can access it
-    // We'll pass it via state or context, for now store in a ref or pass via props
-    // For simplicity, we'll store it in sessionStorage or pass via route state
-    sessionStorage.setItem('currentCourseData', JSON.stringify(response));
-
-    // Navigate to learning path view
-    setView("learning-path");
-
-    toast({
-      title: response.progress.completed_lessons > 0 ? "Welcome Back! 🎉" : "Course Generated! 🎉",
-      description: response.progress.completed_lessons > 0 
-        ? `Continuing your ${course.title} journey...` 
-        : `Your personalized ${course.title} course is ready!`,
-    });
-
-  } catch (error: any) {
-    console.error("Error continuing learning:", error);
-    
-    // Handle FastAPI validation errors (422)
-    let errorMessage = "Failed to continue learning. Please try again.";
-    if (error.response?.data?.detail) {
-      const detail = error.response.data.detail;
-      if (Array.isArray(detail)) {
-        // Format validation errors
-        errorMessage = detail.map((err: any) => 
-          `${err.loc?.join('.')}: ${err.msg}`
-        ).join(', ');
-      } else if (typeof detail === 'string') {
-        errorMessage = detail;
-      } else {
-        errorMessage = JSON.stringify(detail);
+      // Validate course data
+      if (!course.id && !course.title) {
+        toast({
+          title: "Invalid Course",
+          description: "Course information is missing. Please try again.",
+          variant: "destructive",
+        });
+        return;
       }
-    } else if (error.message) {
-      errorMessage = error.message;
-    }
-    
-    toast({
-      title: "Error",
-      description: errorMessage,
-      variant: "destructive",
-    });
-  } finally {
-    setIsContinuing(false);
-  }
-};
 
-// Learning path view
-if (view === "learning-path" && currentCourseName) {
-  const currentCourse = courses.find(c => c.title === currentCourseName);
-  return (
-    <LearningPathView
-      courseId={currentCourseId || currentCourse?.id || ''}
-      courseTitle={currentCourseName}
-      courseSubject={currentCourse?.subject || 'General'}
-      onBack={() => {
-        setView("dashboard");
-        setCurrentCourseName(null);
-        setCurrentCourseId(null);
-        sessionStorage.removeItem('currentCourseData');
-        fetchCourses(); // Refresh courses to show updated progress
-      }}
-    />
-  );
-}
+      // Prepare request payload - only include defined values
+      const requestPayload: any = {
+        user_id: user.id
+      };
+
+      // Convert course.id to string if it exists (it might be a number from DB)
+      if (course.id !== undefined && course.id !== null) {
+        requestPayload.course_id = String(course.id);
+      }
+
+      if (course.title) {
+        requestPayload.course_name = String(course.title);
+      }
+
+      console.log('Sending continue-learning request:', requestPayload);
+
+      // Call the new continue-learning endpoint
+      const response = await agentService.continueLearning(requestPayload);
+
+      console.log('Continue learning response:', response);
+
+      // ✅ FIX: Store complete course data in sessionStorage with proper structure
+      const courseData = {
+        course_id: response.course_id || course.id, // Fallback to course.id if response doesn't have course_id
+        curriculum: response.curriculum || [], // ✅ Ensure curriculum is always an array
+        progress: response.progress || { // ✅ Ensure progress has proper structure
+          progress_percent: 0,
+          completed_lessons: 0,
+          total_lessons: response.curriculum?.length || 0,
+          current_lesson: 1
+        },
+        learning_path: response.learning_path || {}, // ✅ Ensure learning_path exists
+        requirements: response.requirements || {}, // ✅ Store requirements
+        title: course.title,
+        subject: course.subject || 'General', // ✅ Fallback subject
+        // ✅ ADD: Include any additional metadata that might be useful
+        metadata: {
+          is_cached: response.is_cached || false,
+          learning_goal_id: response.learning_goal_id,
+          generated_at: new Date().toISOString()
+        }
+      };
+
+      console.log('Storing course data in sessionStorage:', courseData);
+      
+      // ✅ Store the complete course data
+      sessionStorage.setItem('currentCourseData', JSON.stringify(courseData));
+
+      // ✅ UPDATE: Mark course as existing in DB for button state
+      setCoursesWithGeneration(prev => new Set([...prev, course.title]));
+
+      // Also store individual pieces for easy access
+      setCurrentCourseName(course.title);
+      setCurrentCourseId(courseData.course_id);
+
+      // ✅ Store course data in state as well for immediate access
+      setCurrentCourseData(courseData);
+
+      // Navigate to learning path view
+      setView("learning-path");
+
+      toast({
+        title: courseData.progress.completed_lessons > 0 ? "Welcome Back! 🎉" : "Course Generated! 🎉",
+        description: courseData.progress.completed_lessons > 0
+          ? `Continuing your ${course.title} journey...`
+          : `Your personalized ${course.title} course is ready!`,
+      });
+
+    } catch (error: any) {
+      console.error("Error continuing learning:", error);
+
+      // Handle FastAPI validation errors (422)
+      let errorMessage = "Failed to continue learning. Please try again.";
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        if (Array.isArray(detail)) {
+          // Format validation errors
+          errorMessage = detail.map((err: any) =>
+            `${err.loc?.join('.')}: ${err.msg}`
+          ).join(', ');
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else {
+          errorMessage = JSON.stringify(detail);
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsContinuing(false);
+    }
+  };
+
+  // Learning path view
+  // In your Dashboard's render method, update the LearningPathView component:
+  if (view === "learning-path") {
+    return (
+      <LearningPathView
+        courseId={currentCourseId}
+        courseTitle={currentCourseName}
+        courseSubject={currentCourseData?.subject || 'General'}
+        // ✅ Pass the course data directly as a prop if needed
+        courseData={currentCourseData}
+        onBack={() => setView("courses")}
+      />
+    );
+  }
 
   if (view === "learn") {
     return (
@@ -319,7 +394,7 @@ if (view === "learning-path" && currentCourseName) {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans p-6 space-y-6 transition-colors duration-500">
-      
+
       <motion.div
         initial="hidden"
         animate="visible"
@@ -446,21 +521,21 @@ if (view === "learning-path" && currentCourseName) {
 
                     <div className="mt-2">
                       <Button
-                        variant="outline"
+                        variant={coursesWithGeneration.has(course.title) ? "default" : "outline"}
                         size="sm"
-                        className="w-full bg-card text-foreground border border-border hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
+                        className="w-full gap-2"
                         onClick={() => handleContinueLearning(course)}
                         disabled={isContinuing}
                       >
                         {isContinuing ? (
                           <>
-                            <Sparkles className="w-4 h-4 mr-2 animate-spin" />
-                            Generating Plan...
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {coursesWithGeneration.has(course.title) ? 'Loading...' : 'Generating...'}
                           </>
                         ) : (
                           <>
-                            <Sparkles className="w-4 h-4 mr-2" />
-                            Continue Learning
+                            {getButtonIcon(course.title)}
+                            {getButtonText(course.title)}
                           </>
                         )}
                       </Button>
@@ -515,16 +590,14 @@ if (view === "learning-path" && currentCourseName) {
             </Card>
           </motion.div>
 
-
-
           <PDFUploadCard onUploadComplete={handleUploadComplete} />
         </div>
       </div>
 
-      <CreateGoalDialog 
-        open={showCreateGoal} 
-        onOpenChange={setShowCreateGoal} 
-        onGoalCreated={handleGoalCreated} 
+      <CreateGoalDialog
+        open={showCreateGoal}
+        onOpenChange={setShowCreateGoal}
+        onGoalCreated={handleGoalCreated}
       />
     </div>
   );

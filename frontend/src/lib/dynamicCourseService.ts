@@ -1,265 +1,250 @@
-/**
- * Dynamic Course Service
- * =====================
- * 
- * Service for creating dynamic courses using the new_agent system
- */
-
+// lib/courseService.ts
 import api from './api';
+import { supabase } from './supabaseClient';
 
-export interface CourseRequest {
+export interface CourseGenerationRequest {
+  user_id: string;
   subject: string;
   topic: string;
-  difficulty?: string;
-  duration_weeks?: number;
-  user_profile?: {
-    user_id: string;
-    name: string;
-    email: string;
-    learning_goals?: string[];
-    interests?: string[];
-  };
-  learning_style?: string;
-  available_time?: number;
+  duration_weeks: number;
+  goal_type: string;
+  learning_style: string;
+  difficulty: string;
+  focus_type: string;
+  include_assessments: boolean;
+  include_projects: boolean;
+  specific_goals: string[];
+  description?: string;
 }
 
-export interface LessonRequest {
-  subject: string;
-  topic: string;
-  difficulty?: string;
-  user_profile?: {
-    user_id: string;
-    name: string;
-    email: string;
-    learning_goals?: string[];
-    interests?: string[];
-  };
-  learning_style?: string;
-  duration?: number;
-}
-
-export interface CourseResponse {
+export interface GeneratedCourse {
   course_id: string;
   title: string;
+  subject: string;
+  topic: string;
   curriculum: Array<{
     id: string;
+    week: number;
     title: string;
-    difficulty: string;
+    topic: string;
+    content: string;
+    learning_objectives: string[];
     duration: number;
-    subtopics: Array<{
-      title: string;
-      deadline_minutes: number;
-    }>;
-    questions: Array<{
-      id: string;
-      question: string;
-      type: string;
-      options?: Array<{
-        text: string;
-        correct: boolean;
-      }>;
-    }>;
+    type: 'lesson' | 'assessment' | 'project';
+    difficulty: string;
+    resources: string[];
+    practice_exercises: string[];
+    questions?: any[];
+    passing_score?: number;
+    description?: string;
+    requirements?: string[];
+    deliverables?: string[];
   }>;
   learning_path: {
+    path_id: string;
     title: string;
     description: string;
+    estimated_duration: number;
+    weekly_modules: Array<{
+      week: number;
+      title: string;
+      lessons: any[];
+      estimated_duration: number;
+    }>;
+    total_lessons: number;
+    total_assessments: number;
+    total_projects: number;
   };
-  total_lessons: number;
   estimated_duration: number;
-}
-
-export interface LessonResponse {
-  lesson_id: string;
-  title: string;
-  content: string;
   difficulty: string;
-  duration: number;
-  learning_objectives: string[];
-  prerequisites: string[];
-  assessment_questions: Array<{
-    question: string;
-    type: string;
-    options?: string[];
-    correct_answer?: string;
-    explanation?: string;
-  }>;
-  practice_exercises: string[];
+  learning_style: string;
+  created_at: string;
 }
 
-export interface SubjectOption {
-  value: string;
-  label: string;
+export interface StoredCourse {
+  id: string;
+  user_id: string;
+  course_data: GeneratedCourse;
+  title: string;
+  subject: string;
+  topic: string;
+  duration_weeks: number;
+  difficulty: string;
+  learning_style: string;
+  progress_percent: number;
+  completed_lessons: string[];
+  current_lesson_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface DifficultyLevel {
-  value: string;
-  label: string;
-}
+export class CourseService {
+  private baseUrl = '/courses';
 
-export interface LearningStyle {
-  value: string;
-  label: string;
-}
-
-class DynamicCourseService {
-  private baseUrl = '/api/dynamic-course';
-
-  /**
-   * Create a dynamic course using the new_agent system
-   */
-  async createCourse(request: CourseRequest): Promise<CourseResponse> {
+  // Generate a new course using AI
+  async generateCourse(request: CourseGenerationRequest): Promise<GeneratedCourse> {
     try {
-      const response = await api.post(`${this.baseUrl}/create-course`, request);
+      console.log('Generating course with request:', request);
+
+      // Transform request to match backend's expected format
+      const backendRequest = {
+        user_id: request.user_id,
+        requirements: {
+          subject: request.subject,
+          topic: request.topic,
+          weeks: request.duration_weeks || 4,
+          focus: request.focus_type || 'balanced',
+          assessments: request.include_assessments !== undefined ? request.include_assessments : true
+        }
+      };
+
+      console.log('Transformed backend request:', backendRequest);
+
+      // Use the /create endpoint instead of /generate
+      const response = await api.post(`${this.baseUrl}/create`, backendRequest);
+      console.log('Course generated successfully:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('Error creating dynamic course:', error);
-      throw new Error(error.response?.data?.detail || 'Failed to create dynamic course');
+      console.error('Error generating course:', error);
+      throw new Error(error.response?.data?.detail || 'Failed to generate course');
     }
   }
 
-  /**
-   * Create a single dynamic lesson using the new_agent system
-   */
-  async createLesson(request: LessonRequest): Promise<LessonResponse> {
+  // Save generated course to Supabase
+  async saveCourse(userId: string, generatedCourse: GeneratedCourse): Promise<StoredCourse> {
     try {
-      const response = await api.post(`${this.baseUrl}/create-lesson`, request);
-      return response.data;
+      const { data, error } = await supabase
+        .from('courses')
+        .insert([{
+          user_id: userId,
+          course_data: generatedCourse,
+          title: generatedCourse.title,
+          subject: generatedCourse.subject,
+          topic: generatedCourse.topic,
+          duration_weeks: Math.ceil(generatedCourse.estimated_duration / (7 * 60)),
+          difficulty: generatedCourse.difficulty,
+          learning_style: generatedCourse.learning_style,
+          progress_percent: 0,
+          completed_lessons: [],
+          current_lesson_id: generatedCourse.curriculum[0]?.id || ''
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
     } catch (error: any) {
-      console.error('Error creating dynamic lesson:', error);
-      throw new Error(error.response?.data?.detail || 'Failed to create dynamic lesson');
+      console.error('Error saving course:', error);
+      throw error;
     }
   }
 
-  /**
-   * Get available subjects for course creation
-   */
-  async getSubjects(): Promise<string[]> {
+  // Get all courses for a user
+  async getUserCourses(userId: string): Promise<StoredCourse[]> {
     try {
-      const response = await api.get(`${this.baseUrl}/subjects`);
-      return response.data.subjects;
+      const { data, error } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
     } catch (error: any) {
-      console.error('Error fetching subjects:', error);
-      return [
-        'Mathematics',
-        'Physics',
-        'Chemistry',
-        'Biology',
-        'Computer Science',
-        'Programming',
-        'Data Science',
-        'Machine Learning',
-        'Web Development',
-        'Mobile Development',
-        'Artificial Intelligence',
-        'Cybersecurity',
-        'Business',
-        'Economics',
-        'History',
-        'Literature',
-        'Languages',
-        'Psychology',
-        'Philosophy',
-        'Art',
-        'Music'
-      ];
+      console.error('Error fetching user courses:', error);
+      throw error;
     }
   }
 
-  /**
-   * Get available difficulty levels
-   */
-  async getDifficultyLevels(): Promise<DifficultyLevel[]> {
+  // Update course progress
+  async updateCourseProgress(
+    courseId: string,
+    updates: {
+      progress_percent?: number;
+      completed_lessons?: string[];
+      current_lesson_id?: string;
+    }
+  ): Promise<void> {
     try {
-      const response = await api.get(`${this.baseUrl}/difficulty-levels`);
-      return response.data.levels;
+      const { error } = await supabase
+        .from('courses')
+        .update(updates)
+        .eq('id', courseId);
+
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Error fetching difficulty levels:', error);
-      return [
-        { value: 'beginner', label: 'Beginner' },
-        { value: 'intermediate', label: 'Intermediate' },
-        { value: 'advanced', label: 'Advanced' },
-        { value: 'expert', label: 'Expert' }
-      ];
+      console.error('Error updating course progress:', error);
+      throw error;
     }
   }
 
-  /**
-   * Get available learning styles
-   */
-  async getLearningStyles(): Promise<LearningStyle[]> {
+  // Record detailed lesson progress
+  async recordLessonProgress(
+    userId: string,
+    courseId: string,
+    lessonId: string,
+    data: {
+      completed: boolean;
+      score?: number;
+      time_spent?: number;
+    }
+  ): Promise<void> {
     try {
-      const response = await api.get(`${this.baseUrl}/learning-styles`);
-      return response.data.styles;
+      const { error } = await supabase
+        .from('user_progress')
+        .insert([{
+          user_id: userId,
+          course_id: courseId,
+          lesson_id: lessonId,
+          completed: data.completed,
+          score: data.score,
+          time_spent: data.time_spent,
+          completed_at: data.completed ? new Date().toISOString() : null
+        }]);
+
+      if (error) throw error;
     } catch (error: any) {
-      console.error('Error fetching learning styles:', error);
-      return [
-        { value: 'visual', label: 'Visual' },
-        { value: 'auditory', label: 'Auditory' },
-        { value: 'kinesthetic', label: 'Kinesthetic' },
-        { value: 'reading_writing', label: 'Reading/Writing' },
-        { value: 'analytical', label: 'Analytical' },
-        { value: 'practical', label: 'Practical' },
-        { value: 'balanced', label: 'Balanced' }
-      ];
+      console.error('Error recording lesson progress:', error);
+      throw error;
     }
   }
 
-  /**
-   * Create a course with user profile from auth context
-   */
-  async createCourseWithUser(
-    subject: string,
-    topic: string,
-    difficulty: string = 'medium',
-    duration_weeks: number = 4,
-    user: any
-  ): Promise<CourseResponse> {
-    const request: CourseRequest = {
-      subject,
-      topic,
-      difficulty,
-      duration_weeks,
-      user_profile: {
-        user_id: user.id,
-        name: user.user_metadata?.full_name || 'User',
-        email: user.email,
-        learning_goals: [],
-        interests: []
-      },
-      learning_style: 'balanced',
-      available_time: 60
-    };
+  // Calculate overall progress for a course
+  async calculateCourseProgress(courseId: string): Promise<{ progress: number; completedLessons: string[] }> {
+    try {
+      // Get all lessons for the course
+      const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('course_data')
+        .eq('id', courseId)
+        .single();
 
-    return this.createCourse(request);
-  }
+      if (courseError) throw courseError;
 
-  /**
-   * Create a lesson with user profile from auth context
-   */
-  async createLessonWithUser(
-    subject: string,
-    topic: string,
-    difficulty: string = 'medium',
-    user: any
-  ): Promise<LessonResponse> {
-    const request: LessonRequest = {
-      subject,
-      topic,
-      difficulty,
-      user_profile: {
-        user_id: user.id,
-        name: user.user_metadata?.full_name || 'User',
-        email: user.email,
-        learning_goals: [],
-        interests: []
-      },
-      learning_style: 'balanced',
-      duration: 45
-    };
+      // Get completed lessons from progress table
+      const { data: progressData, error: progressError } = await supabase
+        .from('user_progress')
+        .select('lesson_id')
+        .eq('course_id', courseId)
+        .eq('completed', true);
 
-    return this.createLesson(request);
+      if (progressError) throw progressError;
+
+      const totalLessons = courseData.course_data.curriculum.length;
+      const completedLessons = progressData?.map(p => p.lesson_id) || [];
+      const progress = totalLessons > 0 ? (completedLessons.length / totalLessons) * 100 : 0;
+
+      return {
+        progress,
+        completedLessons
+      };
+    } catch (error: any) {
+      console.error('Error calculating course progress:', error);
+      throw error;
+    }
   }
 }
 
-export const dynamicCourseService = new DynamicCourseService();
-export default dynamicCourseService;
+// Export singleton instance
+export const courseService = new CourseService();
+export default courseService;

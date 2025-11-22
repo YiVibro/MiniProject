@@ -3,7 +3,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
-
+from app.routes.course_routes import router as course_router
+from app.routes import course_routes
+from app.routes.agents import router as agents_router
 # Load env
 load_dotenv()
 
@@ -37,13 +39,15 @@ app.add_middleware(
 )
 
 # Import routers
-from app.routes import auth, oauth, agents, course_generator
+from app.routes import auth, oauth, agents
 
 # Include all routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 app.include_router(agents.router, tags=["Agents"])
-app.include_router(course_generator.router, prefix="/course", tags=["Course"])
+app.include_router(course_routes.router, prefix="/course", tags=["Course"])
+app.include_router(course_router)
+app.include_router(agents_router)
 
 @app.get("/")
 def root():

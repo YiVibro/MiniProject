@@ -38,7 +38,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
   const [isLoading, setIsLoading] = useState(false);
 
   const subjects = [
-    "Python Programming", "JavaScript", "Machine Learning", "Web Development", 
+    "Python Programming", "JavaScript", "Machine Learning", "Web Development",
     "Data Science", "Computer Science", "Mathematics", "Physics", "Chemistry", "Biology"
   ];
 
@@ -83,134 +83,134 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
   };
 
   const handleCreateGoal = async () => {
-  if (!user) {
-    alert("Error: You must be logged in to create a goal. Please try logging in again.");
-    return;
-  }
-  
-  if (!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty) {
-    alert("Please fill in all required fields.");
-    return;
-  }
-
-  setIsLoading(true);
-
-  try {
-    // 1. Find or create the category in Supabase
-    let { data: category, error: categoryError } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('name', goalData.subject)
-      .single();
-
-    if (categoryError && categoryError.code !== 'PGRST116') { // PGRST116: row not found
-      throw categoryError;
+    if (!user) {
+      alert("Error: You must be logged in to create a goal. Please try logging in again.");
+      return;
     }
 
-    if (!category) {
-      const { data: newCategory, error: newCategoryError } = await supabase
-        .from('categories')
-        .insert({ name: goalData.subject })
-        .select('id')
-        .single();
-      if (newCategoryError) throw newCategoryError;
-      category = newCategory;
+    if (!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty) {
+      alert("Please fill in all required fields.");
+      return;
     }
 
-    // 2. Create the learning goal first (this table uses UUID for category_id)
-    const { data: learningGoal, error: goalError } = await supabase
-      .from('learning_goals')
-      .insert({
-        user_id: user.id,
-        category_id: category.id, // This is UUID - correct for learning_goals table
-        title: goalData.title,
-        description: goalData.description,
-        goal_type: goalData.goalType,
-        learning_style: goalData.learningStyle,
-        difficulty: goalData.difficulty,
-        focus_type: goalData.focus,
-        study_duration_hours: parseInt(goalData.duration) || 5,
-        target_weeks: goalData.weeks,
-        target_date: goalData.targetDate,
-        status: 'active',
-        progress: 0,
-      })
-      .select()
-      .single();
+    setIsLoading(true);
 
-    if (goalError) throw goalError;
-
-    // 3. Now create the user_progress record with the correct category_id type
-    // For user_progress, we need to use a bigint category_id or leave it null
-    const { error: progressError } = await supabase
-      .from('user_progress')
-      .insert({
-        user_id: user.id,
-        category_id: category.id,
-        course_name: goalData.title,
-        progress_percent: 0,
-      });
-
-    if (progressError) {
-      console.warn("Could not create user_progress record:", progressError);
-      // Continue anyway since the main goal was created
-    }
-
-    console.log("Goal created successfully in Supabase!");
-    alert(`Goal created successfully! Your ${goalData.subject} learning path has been created.`);
-
-    onGoalCreated(); // Refresh the dashboard
-    onOpenChange(false); // Close the dialog
-    
     try {
-      // Try to create a course via backend to obtain a course id
-      const profile = user.user_metadata || {};
-      const res = await (await import("@/lib/agentService")).default.createCourse({
-        user_id: user.id,
-        subject: goalData.subject,
-        topic: goalData.title,
-        weeks: goalData.weeks,
-        focus: goalData.focus,
-        assessments: true,
-        user_profile: {
-          name: profile.full_name || profile.name || "Learner",
-          email: user.email || `${user.id}@example.com`,
-          learning_style: goalData.learningStyle || "balanced",
-          preferred_difficulty: goalData.difficulty || "intermediate",
-          available_time: parseInt(goalData.duration || "60"),
-          learning_goals: [goalData.description || "Learn the subject"],
-          interests: [],
-        },
-      });
-      if (res?.course_id) {
-        window.open(`/course/${res.course_id}`, "_blank");
-      }
-    } catch (e) {
-      console.warn("Course creation failed; skipping open tab.", e);
-    }
-    
-    // Reset form
-    setGoalData({
-      title: "",
-      subject: "",
-      goalType: "",
-      duration: "",
-      description: "",
-      learningStyle: "",
-      difficulty: "",
-      weeks: 4,
-      focus: "balanced",
-      targetDate: undefined,
-    });
-    setUploadedFiles([]);
+      // 1. Find or create the category in Supabase
+      let { data: category, error: categoryError } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('name', goalData.subject)
+        .single();
 
-  } catch (error: any) {
-    console.error("Error creating goal:", error.message);
-    alert(`Error creating goal: ${error.message}`);
-  } finally {
-    setIsLoading(false);
-  }
-};
+      if (categoryError && categoryError.code !== 'PGRST116') { // PGRST116: row not found
+        throw categoryError;
+      }
+
+      if (!category) {
+        const { data: newCategory, error: newCategoryError } = await supabase
+          .from('categories')
+          .insert({ name: goalData.subject })
+          .select('id')
+          .single();
+        if (newCategoryError) throw newCategoryError;
+        category = newCategory;
+      }
+
+      // 2. Create the learning goal first (this table uses UUID for category_id)
+      const { data: learningGoal, error: goalError } = await supabase
+        .from('learning_goals')
+        .insert({
+          user_id: user.id,
+          category_id: category.id, // This is UUID - correct for learning_goals table
+          title: goalData.title,
+          description: goalData.description,
+          goal_type: goalData.goalType,
+          learning_style: goalData.learningStyle,
+          difficulty: goalData.difficulty,
+          focus_type: goalData.focus,
+          study_duration_hours: parseInt(goalData.duration) || 5,
+          target_weeks: goalData.weeks,
+          target_date: goalData.targetDate,
+          status: 'active',
+          progress: 0,
+        })
+        .select()
+        .single();
+
+      if (goalError) throw goalError;
+
+      // 3. Now create the user_progress record with the correct category_id type
+      // For user_progress, we need to use a bigint category_id or leave it null
+      const { error: progressError } = await supabase
+        .from('user_progress')
+        .insert({
+          user_id: user.id,
+          category_id: category.id,
+          course_name: goalData.title,
+          progress_percent: 0,
+        });
+
+      if (progressError) {
+        console.warn("Could not create user_progress record:", progressError);
+        // Continue anyway since the main goal was created
+      }
+
+      console.log("Goal created successfully in Supabase!");
+      alert(`Goal created successfully! Your ${goalData.subject} learning path has been created.`);
+
+      onGoalCreated(); // Refresh the dashboard
+      onOpenChange(false); // Close the dialog
+
+      try {
+        // Try to create a course via backend to obtain a course id
+        const profile = user.user_metadata || {};
+        const res = await (await import("@/lib/agentService")).default.createCourse({
+          user_id: user.id,
+          subject: goalData.subject,
+          topic: goalData.title,
+          weeks: goalData.weeks,
+          focus: goalData.focus,
+          assessments: true,
+          user_profile: {
+            name: profile.full_name || profile.name || "Learner",
+            email: user.email || `${user.id}@example.com`,
+            learning_style: goalData.learningStyle || "balanced",
+            preferred_difficulty: goalData.difficulty || "intermediate",
+            available_time: parseInt(goalData.duration || "60"),
+            learning_goals: [goalData.description || "Learn the subject"],
+            interests: [],
+          },
+        });
+        if (res?.course_id) {
+          window.open(`/course/${res.course_id}`, "_blank");
+        }
+      } catch (e) {
+        console.warn("Course creation failed; skipping open tab.", e);
+      }
+
+      // Reset form
+      setGoalData({
+        title: "",
+        subject: "",
+        goalType: "",
+        duration: "",
+        description: "",
+        learningStyle: "",
+        difficulty: "",
+        weeks: 4,
+        focus: "balanced",
+        targetDate: undefined,
+      });
+      setUploadedFiles([]);
+
+    } catch (error: any) {
+      console.error("Error creating goal:", error.message);
+      alert(`Error creating goal: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -229,13 +229,13 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
               id="title"
               placeholder="e.g., Master Calculus Fundamentals"
               value={goalData.title}
-              onChange={(e) => setGoalData({...goalData, title: e.target.value})}
+              onChange={(e) => setGoalData({ ...goalData, title: e.target.value })}
             />
           </div>
 
           <div className="space-y-2">
             <Label>Subject</Label>
-            <Select value={goalData.subject} onValueChange={(value) => setGoalData({...goalData, subject: value})}>
+            <Select value={goalData.subject} onValueChange={(value) => setGoalData({ ...goalData, subject: value })}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a subject" />
               </SelectTrigger>
@@ -259,7 +259,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
                       ? "border-primary bg-primary/10 shadow-md"
                       : "hover:bg-muted/50"
                   )}
-                  onClick={() => setGoalData({...goalData, goalType: type.value})}
+                  onClick={() => setGoalData({ ...goalData, goalType: type.value })}
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -274,7 +274,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
               ))}
             </div>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Study Duration (hours/week)</Label>
@@ -282,7 +282,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
                 type="number"
                 placeholder="e.g., 5"
                 value={goalData.duration}
-                onChange={(e) => setGoalData({...goalData, duration: e.target.value})}
+                onChange={(e) => setGoalData({ ...goalData, duration: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -318,7 +318,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
               id="description"
               placeholder="Describe your learning objectives..."
               value={goalData.description}
-              onChange={(e) => setGoalData({...goalData, description: e.target.value})}
+              onChange={(e) => setGoalData({ ...goalData, description: e.target.value })}
               rows={3}
             />
           </div>
@@ -332,11 +332,11 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
                   key={style.value}
                   className={cn(
                     "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
-                    goalData.learningStyle === style.value 
-                      ? "border-primary bg-primary/10 shadow-md" 
+                    goalData.learningStyle === style.value
+                      ? "border-primary bg-primary/10 shadow-md"
                       : "border-gray-300"
                   )}
-                  onClick={() => setGoalData({...goalData, learningStyle: style.value})}
+                  onClick={() => setGoalData({ ...goalData, learningStyle: style.value })}
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -361,11 +361,11 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
                   key={level.value}
                   className={cn(
                     "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
-                    goalData.difficulty === level.value 
-                      ? "border-primary bg-primary/10 shadow-md" 
+                    goalData.difficulty === level.value
+                      ? "border-primary bg-primary/10 shadow-md"
                       : "border-gray-300"
                   )}
-                  onClick={() => setGoalData({...goalData, difficulty: level.value})}
+                  onClick={() => setGoalData({ ...goalData, difficulty: level.value })}
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -390,11 +390,11 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
                   key={focus.value}
                   className={cn(
                     "p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md",
-                    goalData.focus === focus.value 
-                      ? "border-primary bg-primary/10 shadow-md" 
+                    goalData.focus === focus.value
+                      ? "border-primary bg-primary/10 shadow-md"
                       : "border-gray-300"
                   )}
-                  onClick={() => setGoalData({...goalData, focus: focus.value})}
+                  onClick={() => setGoalData({ ...goalData, focus: focus.value })}
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -413,7 +413,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
           {/* Course Duration in Weeks */}
           <div className="space-y-2">
             <Label>Course Duration (weeks)</Label>
-            <Select value={goalData.weeks.toString()} onValueChange={(value) => setGoalData({...goalData, weeks: parseInt(value)})}>
+            <Select value={goalData.weeks.toString()} onValueChange={(value) => setGoalData({ ...goalData, weeks: parseInt(value) })}>
               <SelectTrigger>
                 <SelectValue placeholder="Select duration" />
               </SelectTrigger>
@@ -444,7 +444,7 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
                 <label htmlFor="file-upload" className="cursor-pointer">Choose Files</label>
               </Button>
             </div>
-            
+
             {uploadedFiles.length > 0 && (
               <div className="space-y-2">
                 <Label>Uploaded Files:</Label>
@@ -464,8 +464,8 @@ export const CreateGoalDialog = ({ open, onOpenChange, onGoalCreated }: CreateGo
             <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancel
             </Button>
-            <Button 
-              onClick={handleCreateGoal} 
+            <Button
+              onClick={handleCreateGoal}
               className="flex-1"
               disabled={!goalData.title || !goalData.subject || !goalData.goalType || !goalData.learningStyle || !goalData.difficulty || isLoading}
             >

@@ -238,6 +238,7 @@ export interface ContinueLearningResponse {
     difficulty_progression: string[];
     milestones: string[];
   };
+  is_cached: boolean;
 }
 
 export class AgentService {

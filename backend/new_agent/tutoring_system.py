@@ -11,6 +11,9 @@ from datetime import datetime
 import asyncio
 import uuid
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Import all system components
 from new_agent.models import (
@@ -34,7 +37,7 @@ from new_agent.agents.planner_agent import PlannerAgent
 class SystemConfig:
     """System configuration"""
     llm_provider: str = "google"
-    llm_api_key: str = "AIzaSyCKe9J2cwEzVnsp-MNU-xJxf255_hWAVzE"
+    llm_api_key: str = "GEMINI_API_KEY"
     llm_model: str = "gemini-pro"
     max_concurrent_sessions: int = 100
     session_timeout: int = 3600  # seconds

@@ -517,6 +517,66 @@ async def interactive_demo():
             break
         except Exception as e:
             print(f"❌ Error: {e}")
+def _simple_parse_request(self, user_request: str) -> Dict[str, Any]:
+    """Simple fallback parsing"""
+    
+    # Extract subject
+    subject = "General"
+    if "python" in user_request.lower():
+        subject = "Python"
+    elif "javascript" in user_request.lower():
+        subject = "JavaScript"
+    elif "machine learning" in user_request.lower() or "ml" in user_request.lower():
+        subject = "Machine Learning"
+    elif "web development" in user_request.lower():
+        subject = "Web Development"
+    elif "data science" in user_request.lower():
+        subject = "Data Science"
+    
+    # Extract level
+    level = "beginner"
+    if "intermediate" in user_request.lower():
+        level = "intermediate"
+    elif "advanced" in user_request.lower():
+        level = "advanced"
+    elif "expert" in user_request.lower():
+        level = "advanced"
+    
+    # ✅ FIX: Extract timeline with default fallback
+    timeline = "4 weeks"  # Default
+    if "3 months" in user_request.lower() or "3 month" in user_request.lower():
+        timeline = "3 months"
+    elif "6 months" in user_request.lower() or "6 month" in user_request.lower():
+        timeline = "6 months"
+    elif "1 year" in user_request.lower():
+        timeline = "1 year"
+    elif "6 weeks" in user_request.lower() or "6 week" in user_request.lower():
+        timeline = "6 weeks"
+    elif "8 weeks" in user_request.lower() or "8 week" in user_request.lower():
+        timeline = "8 weeks"
+    elif "1 month" in user_request.lower():
+        timeline = "1 month"
+    
+    # Extract goals
+    goals = ["Master the subject", "Build practical skills"]
+    if "job" in user_request.lower() or "career" in user_request.lower():
+        goals.append("Prepare for job interviews")
+    if "project" in user_request.lower():
+        goals.append("Build real-world projects")
+    if "certification" in user_request.lower():
+        goals.append("Prepare for certification")
+    
+    return {
+        "subject": subject,
+        "current_level": level,
+        "timeline": timeline,  # ✅ Always includes a valid timeline
+        "goals": goals,
+        "time_per_day": "2 hours",
+        "learning_style": "balanced",
+        "weekly_tests": True,
+        "adaptive_difficulty": True,
+        "project_based": "project" in user_request.lower()
+    }
 
 async def main():
     """Main demo function"""

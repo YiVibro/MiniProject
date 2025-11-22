@@ -7,6 +7,7 @@ multi-agent tutoring system, eliminating hardcoded lessons.
 """
 
 import asyncio
+import os
 import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -20,18 +21,20 @@ class EnhancedTutoringSystem(MultiAgentTutoringSystem):
     
     def __init__(self, config: SystemConfig):
         super().__init__(config)
-        
-        # Override to use the real LLM service for non-mock content
+        # Use the real LLM service
+        from .real_llm_service import RealLLMService
+        if not config.llm_api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is required")
         self.llm_service = RealLLMService(config.llm_api_key, config.llm_model)
 
         # Reinitialize core systems and agents with the real LLM
-        from assessment_system import AssessmentSystem
-        from gap_analysis import GapAnalysisSystem
-        from knowledge_gap_filler import KnowledgeGapFiller
-        from agents.knowledge_agent import KnowledgeAgent
-        from agents.practice_agent import PracticeAgent
-        from agents.motivation_agent import MotivationAgent
-        from agents.planner_agent import PlannerAgent
+        from .assessment_system import AssessmentSystem
+        from .gap_analysis import GapAnalysisSystem
+        from .knowledge_gap_filler import KnowledgeGapFiller
+        from new_agent.agents.knowledge_agent import KnowledgeAgent
+        from new_agent.agents.practice_agent import PracticeAgent
+        from new_agent.agents.motivation_agent import MotivationAgent
+        from new_agent.agents.planner_agent import PlannerAgent
 
         self.assessment_system = AssessmentSystem(self.llm_service)
         self.gap_analysis_system = GapAnalysisSystem(self.llm_service)
@@ -294,6 +297,8 @@ class EnhancedTutoringSystem(MultiAgentTutoringSystem):
     
     def _extract_weeks_from_timeline(self, timeline: str) -> int:
         """Extract number of weeks from timeline string"""
+        if timeline is None or not timeline:
+            return 12  # Default to 12 weeks if no timeline specified
         if "3 months" in timeline:
             return 12
         elif "6 months" in timeline:
@@ -364,11 +369,10 @@ async def demo_enhanced_system():
     print("🚀 Enhanced Tutoring System Demo")
     print("=" * 50)
     
-    # Initialize enhanced system
     config = SystemConfig(
         llm_provider="google",
-        llm_api_key="demo-key",
-        llm_model="gemini-pro",
+        llm_api_key=os.getenv("GOOGLE_API_KEY", "demo-key"),
+        llm_model=os.getenv("LLM_MODEL", "gemini-2.5-flash"),
         enable_analytics=True,
         enable_gap_analysis=True,
         enable_learning_curves=True,

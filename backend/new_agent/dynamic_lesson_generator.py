@@ -23,7 +23,7 @@ class DynamicLessonGenerator:
         self.generated_lessons = {}  # Cache for generated lessons
         self.lesson_templates = {}  # Templates for different subjects
         
-    async def generate_lesson(self, 
+    async def generate_lesson(self,
                             subject: str, 
                             topic: str, 
                             difficulty: str = "medium",
@@ -68,14 +68,16 @@ class DynamicLessonGenerator:
                                      user_profile: Optional[UserProfile],
                                      learning_style: str,
                                      duration: int) -> Dict[str, Any]:
-        """Generate comprehensive lesson content using LLM (structured first, fallback to parsing)."""
+        """Generate comprehensive lesson content using LLM"""
         
         prompt = self._create_lesson_generation_prompt(
             subject, topic, difficulty, user_profile, learning_style, duration
         )
         
-        # Directly ask for free-form content then parse, to avoid placeholder structured data
+        # Get response from LLM
         response = await self.llm_service.generate_response(prompt)
+        
+        # Parse response into structured format
         return await self._parse_lesson_response(response, topic, difficulty)
     
     def _create_lesson_generation_prompt(self, 
@@ -163,20 +165,49 @@ class DynamicLessonGenerator:
         # Extract title
         title = self._extract_title(response, topic)
         
+        # Ensure title is valid
+        if not title or title == "---" or len(title) < 5:
+            title = f"Mastering {topic}"
+        
         # Extract content
         content = self._extract_content(response)
         
+        # Ensure content is substantial
+        if len(content) < 100:
+            content = response  # Use full response as fallback
+        
         # Extract learning objectives
         objectives = self._extract_learning_objectives(response)
+        if not objectives:
+            objectives = [
+                f"Understand the fundamentals of {topic}",
+                f"Apply {topic} concepts in practical scenarios",
+                f"Develop proficiency in {topic}"
+            ]
         
         # Extract prerequisites
         prerequisites = self._extract_prerequisites(response)
         
         # Extract assessment questions
         assessment_questions = self._extract_assessment_questions(response)
+        if not assessment_questions:
+            # Generate fallback questions
+            assessment_questions = [
+                {
+                    "question": f"What is {topic}?",
+                    "type": "short_answer",
+                    "correct_answer": f"{topic} is...",
+                    "explanation": "This tests basic understanding."
+                }
+            ]
         
         # Extract practice exercises
         practice_exercises = self._extract_practice_exercises(response)
+        if not practice_exercises:
+            practice_exercises = [
+                f"Practice the basic concepts of {topic}",
+                f"Apply {topic} to solve real-world problems"
+            ]
         
         return {
             "title": title,
@@ -190,12 +221,45 @@ class DynamicLessonGenerator:
     def _extract_title(self, response: str, topic: str) -> str:
         """Extract lesson title from response"""
         lines = response.split('\n')
-        for line in lines:
-            if 'TITLE:' in line.upper() or 'LESSON TITLE:' in line.upper():
-                return line.split(':', 1)[1].strip()
-            elif line.strip() and not line.startswith('#') and not line.startswith('*') and not line.startswith('A)') and not line.startswith('B)'):
-                # Use first meaningful line as title
-                return line.strip()
+        
+        # Look for title patterns
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Skip empty lines and markdown headers without content
+            if not line or line == '#' or line == '##' or line == '---':
+                continue
+                
+            # Check for explicit title markers
+            if any(marker in line.upper() for marker in ['TITLE:', 'LESSON TITLE:', '# TITLE']):
+                # Get the title after the marker
+                if ':' in line:
+                    title = line.split(':', 1)[1].strip()
+                    if title and title != '---':
+                        return title
+            
+            # Check for markdown headers (# or ##)
+            if line.startswith('#'):
+                title = line.lstrip('#').strip()
+                # Make sure it's not just formatting
+                if title and len(title) > 5 and title != '---':
+                    return title
+            
+            # Check for bold title patterns
+            if line.startswith('**') and line.endswith('**'):
+                title = line.strip('*').strip()
+                if title and len(title) > 5:
+                    return title
+            
+            # First substantial line that looks like a title
+            if (i < 10 and  # Within first 10 lines
+                len(line) > 10 and 
+                len(line) < 100 and
+                line != '---' and
+                not line.startswith(('Subject:', 'Difficulty:', 'Duration:', 'Learning'))):
+                return line
+        
+        # Fallback to topic-based title
         return f"Introduction to {topic}"
     
     def _extract_content(self, response: str) -> str:
@@ -204,24 +268,471 @@ class DynamicLessonGenerator:
         content_sections = []
         lines = response.split('\n')
         in_content = False
+        skip_patterns = [
+            'CONTENT:', 'LESSON CONTENT:', 'LEARNING OBJECTIVES:', 
+            'ASSESSMENT:', 'PRACTICE:', 'TITLE:', 'LESSON TITLE:',
+            'Subject:', 'Difficulty:', 'Duration:', 'Learning Style'
+        ]
         
         for line in lines:
-            if 'CONTENT:' in line.upper() or 'LESSON CONTENT:' in line.upper():
-                in_content = True
+            # Skip metadata and section headers
+            if any(pattern in line for pattern in skip_patterns):
+                if 'CONTENT:' in line.upper() or 'LESSON CONTENT:' in line.upper():
+                    in_content = True
+                else:
+                    in_content = False
                 continue
-            elif in_content and (line.startswith('LEARNING OBJECTIVES:') or 
-                               line.startswith('ASSESSMENT:') or 
-                               line.startswith('PRACTICE:')):
+            
+            # Stop at certain sections
+            if any(pattern in line for pattern in ['PREREQUISITES:', 'ASSESSMENT', 'QUESTIONS:', 'EXERCISES:']):
                 break
-            elif in_content and line.strip():
+            
+            # Collect content lines
+            if line.strip() and (in_content or len(content_sections) > 0):
                 content_sections.append(line)
         
         if content_sections:
             return '\n'.join(content_sections)
         else:
-            # Fallback: use the entire response as content
-            return response
+            # Fallback: use the entire response, but clean it up
+            # Remove the first few lines which are usually metadata
+            cleaned_lines = []
+            metadata_done = False
+            for line in lines:
+                if not metadata_done:
+                    # Skip lines that look like metadata
+                    if any(pattern in line for pattern in skip_patterns[:5]):
+                        continue
+                    else:
+                        metadata_done = True
+                if metadata_done:
+                    cleaned_lines.append(line)
+            
+            return '\n'.join(cleaned_lines) if cleaned_lines else response
     
+    def _extract_learning_objectives(self, response: str) -> List[str]:
+        """Extract learning objectives from response"""
+        objectives = []
+        lines = response.split('\n')
+        in_objectives = False
+        
+        for line in lines:
+            if 'LEARNING OBJECTIVES:' in line.upper() or 'OBJECTIVES:' in line.upper():
+                in_objectives = True
+                continue
+            elif in_objectives and (line.startswith('PREREQUISITES:') or 
+                                  line.startswith('ASSESSMENT:') or 
+                                  line.startswith('PRACTICE:')):
+                break
+            elif in_objectives and line.strip():
+                # Clean up objective text
+                objective = line.strip()
+                if objective.startswith(('-', '*', '•')):
+                    objective = objective[1:].strip()
+                if objective.startswith(('1.', '2.', '3.', '4.', '5.')):
+                    objective = objective[2:].strip()
+                if objective:
+                    objectives.append(objective)
+        
+        return objectives[:5]  # Limit to 5 objectives
+    
+    def _extract_prerequisites(self, response: str) -> List[str]:
+        """Extract prerequisites from response"""
+        prerequisites = []
+        lines = response.split('\n')
+        in_prerequisites = False
+        
+        for line in lines:
+            if 'PREREQUISITES:' in line.upper() or 'REQUIRED KNOWLEDGE:' in line.upper():
+                in_prerequisites = True
+                continue
+            elif in_prerequisites and (line.startswith('ASSESSMENT:') or 
+                                     line.startswith('PRACTICE:') or
+                                     line.startswith('LEARNING OBJECTIVES:')):
+                break
+            elif in_prerequisites and line.strip():
+                prereq = line.strip()
+                if prereq.startswith(('-', '*', '•')):
+                    prereq = prereq[1:].strip()
+                if prereq:
+                    prerequisites.append(prereq)
+        
+        return prerequisites[:3]  # Limit to 3 prerequisites
+    
+    def _extract_assessment_questions(self, response: str) -> List[Dict[str, Any]]:
+        """Extract assessment questions from response"""
+        questions = []
+        lines = response.split('\n')
+        in_questions = False
+        current_question = None
+        
+        for line in lines:
+            if 'ASSESSMENT' in line.upper() or 'QUESTIONS:' in line.upper():
+                in_questions = True
+                continue
+            elif in_questions and (line.startswith('PRACTICE:') or 
+                                 line.startswith('EXERCISES:')):
+                break
+            elif in_questions and line.strip():
+                # Check if this is a new question
+                if (line.startswith(('Q', 'Question')) or 
+                    line.startswith(('1.', '2.', '3.', '4.', '5.')) or
+                    '?' in line):
+                    
+                    # Save previous question
+                    if current_question:
+                        questions.append(current_question)
+                    
+                    # Start new question
+                    current_question = {
+                        "question": line.strip(),
+                        "type": "multiple_choice",
+                        "options": [],
+                        "correct_answer": "",
+                        "explanation": ""
+                    }
+                elif current_question:
+                    # Add to current question
+                    if line.startswith(('A)', 'B)', 'C)', 'D)')):
+                        current_question["options"].append(line.strip())
+                    elif line.startswith("Answer:"):
+                        current_question["correct_answer"] = line.replace("Answer:", "").strip()
+                    elif line.startswith("Explanation:"):
+                        current_question["explanation"] = line.replace("Explanation:", "").strip()
+        
+        # Add final question
+        if current_question:
+            questions.append(current_question)
+        
+        return questions[:7]  # Limit to 7 questions
+    
+    def _extract_practice_exercises(self, response: str) -> List[str]:
+        """Extract practice exercises from response"""
+        exercises = []
+        lines = response.split('\n')
+        in_exercises = False
+        
+        for line in lines:
+            if 'PRACTICE:' in line.upper() or 'EXERCISES:' in line.upper():
+                in_exercises = True
+                continue
+            elif in_exercises and line.strip():
+                exercise = line.strip()
+                if exercise.startswith(('-', '*', '•')):
+                    exercise = exercise[1:].strip()
+                if exercise.startswith(('1.', '2.', '3.', '4.', '5.')):
+                    exercise = exercise[2:].strip()
+                if exercise:
+                    exercises.append(exercise)
+        
+        return exercises[:5]  # Limit to 5 exercises
+    
+    async def generate_curriculum(self, 
+                                subject: str, 
+                                level: str, 
+                                duration_weeks: int,
+                                user_profile: Optional[UserProfile] = None) -> List[Lesson]:
+        """Generate a complete curriculum using LLM"""
+        
+        print(f"📚 Generating {duration_weeks}-week curriculum for {subject} ({level})")
+        
+        # Generate curriculum outline
+        curriculum_outline = await self._generate_curriculum_outline(
+            subject, level, duration_weeks, user_profile
+        )
+        
+        # Generate lessons for each topic
+        lessons = []
+        for i, topic in enumerate(curriculum_outline):
+            lesson = await self.generate_lesson(
+                subject=subject,
+                topic=topic,
+                difficulty=level,
+                user_profile=user_profile,
+                learning_style=user_profile.learning_style if user_profile else "balanced",
+                duration=45 + (i * 5)  # Increasing duration
+            )
+            lessons.append(lesson)
+        
+        print(f"✅ Generated {len(lessons)} lessons for {subject} curriculum")
+        return lessons
+    
+    async def _generate_curriculum_outline(self, 
+                                         subject: str, 
+                                         level: str, 
+                                         duration_weeks: int,
+                                         user_profile: Optional[UserProfile]) -> List[str]:
+        """Generate curriculum outline using LLM"""
+        
+        prompt = f"""
+        Create a {duration_weeks}-week curriculum outline for {subject} at {level} level.
+        
+        """
+        
+        if user_profile:
+            prompt += f"""
+        USER PROFILE:
+        - Learning Goals: {', '.join(user_profile.learning_goals)}
+        - Interests: {', '.join(user_profile.interests)}
+        - Available Time: {user_profile.available_time} minutes per day
+        
+        """
+        
+        prompt += f"""
+        REQUIREMENTS:
+        - Create {duration_weeks * 3} topics (3 topics per week)
+        - Progress from basic to advanced concepts
+        - Include practical applications
+        - Ensure logical progression
+        - Consider {level} level complexity
+        
+        FORMAT: Provide a simple list of topics, one per line.
+        Example:
+        Week 1: Introduction to Basics
+        Week 1: Core Concepts
+        Week 1: First Applications
+        Week 2: Intermediate Topics
+        ...
+        
+        Focus on creating a logical learning progression that builds upon previous knowledge.
+        """
+        
+        response = await self.llm_service.generate_response(prompt)
+        
+        # Parse topics from response
+        topics = []
+        lines = response.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#') and not line.startswith('*'):
+                # Extract topic from line
+                if ':' in line:
+                    topic = line.split(':', 1)[1].strip()
+                else:
+                    topic = line
+                if topic:
+                    topics.append(topic)
+        
+        return topics[:duration_weeks * 3]  # Limit to requested number
+    
+    async def adapt_lesson_for_user(self, 
+                                 lesson: Lesson, 
+                                 user_profile: UserProfile,
+                                 user_progress: Optional[UserProgress] = None) -> Lesson:
+        """Adapt an existing lesson for a specific user"""
+        
+        print(f"🎯 Adapting lesson for user: {user_profile.user_id}")
+        
+        # Create adaptation prompt
+        prompt = f"""
+        Adapt this lesson for a specific user profile:
+        
+        LESSON: {lesson.title}
+        CONTENT: {lesson.content[:500]}...
+        
+        USER PROFILE:
+        - Learning Style: {user_profile.learning_style}
+        - Preferred Difficulty: {user_profile.preferred_difficulty}
+        - Available Time: {user_profile.available_time} minutes
+        - Learning Goals: {', '.join(user_profile.learning_goals)}
+        - Interests: {', '.join(user_profile.interests)}
+        
+        """
+        
+        if user_progress:
+            prompt += f"""
+        USER PROGRESS:
+        - Current Difficulty: {user_progress.current_difficulty}
+        - Completed Lessons: {len(user_progress.completed_lessons)}
+        - Average Score: {sum(user_progress.test_scores) / len(user_progress.test_scores) if user_progress.test_scores else 0:.1%}
+        - Learning Goals: {', '.join(user_progress.learning_goals)}
+        
+        """
+        
+        prompt += f"""
+        ADAPTATION REQUIREMENTS:
+        1. Adjust content complexity to match user's level
+        2. Incorporate user's learning style preferences
+        3. Include examples relevant to user's interests
+        4. Modify duration to fit available time
+        5. Align with user's learning goals
+        6. Provide personalized examples and applications
+        
+        Return the adapted lesson content with the same structure as the original.
+        """
+        
+        # Generate adapted content
+        adapted_content = await self.llm_service.generate_response(prompt)
+        
+        # Create adapted lesson
+        adapted_lesson = Lesson(
+            lesson_id=f"{lesson.lesson_id}_adapted_{user_profile.user_id}",
+            title=f"{lesson.title} (Adapted)",
+            content=adapted_content,
+            difficulty=user_profile.preferred_difficulty,
+            duration=min(lesson.duration, user_profile.available_time),
+            learning_objectives=lesson.learning_objectives,
+            prerequisites=lesson.prerequisites,
+            assessment_questions=lesson.assessment_questions,
+            practice_exercises=lesson.practice_exercises
+        )
+        
+        print(f"✅ Lesson adapted for user: {user_profile.user_id}")
+        return adapted_lesson
+
+
+async def _parse_lesson_response(self, response: str, topic: str, difficulty: str) -> Dict[str, Any]:
+    """Parse LLM response into structured lesson data"""
+    
+    # Extract title
+    title = self._extract_title(response, topic)
+    
+    # Ensure title is valid
+    if not title or title == "---" or len(title) < 5:
+        title = f"Mastering {topic}"
+    
+    # Extract content
+    content = self._extract_content(response)
+    
+    # Ensure content is substantial
+    if len(content) < 100:
+        content = response  # Use full response as fallback
+    
+    # Extract learning objectives
+    objectives = self._extract_learning_objectives(response)
+    if not objectives:
+        objectives = [
+            f"Understand the fundamentals of {topic}",
+            f"Apply {topic} concepts in practical scenarios",
+            f"Develop proficiency in {topic}"
+        ]
+    
+    # Extract prerequisites
+    prerequisites = self._extract_prerequisites(response)
+    
+    # Extract assessment questions
+    assessment_questions = self._extract_assessment_questions(response)
+    if not assessment_questions:
+        # Generate fallback questions
+        assessment_questions = [
+            {
+                "question": f"What is {topic}?",
+                "type": "short_answer",
+                "correct_answer": f"{topic} is...",
+                "explanation": "This tests basic understanding."
+            }
+        ]
+    
+    # Extract practice exercises
+    practice_exercises = self._extract_practice_exercises(response)
+    if not practice_exercises:
+        practice_exercises = [
+            f"Practice the basic concepts of {topic}",
+            f"Apply {topic} to solve real-world problems"
+        ]
+    
+    return {
+        "title": title,
+        "content": content,
+        "learning_objectives": objectives,
+        "prerequisites": prerequisites,
+        "assessment_questions": assessment_questions,
+        "practice_exercises": practice_exercises
+    }
+
+
+    def _extract_title(self, response: str, topic: str) -> str:
+        """Extract lesson title from response"""
+        lines = response.split('\n')
+    
+        # Look for title patterns
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Skip empty lines and markdown headers without content
+            if not line or line == '#' or line == '##' or line == '---':
+                continue
+                
+            # Check for explicit title markers
+            if any(marker in line.upper() for marker in ['TITLE:', 'LESSON TITLE:', '# TITLE']):
+                # Get the title after the marker
+                if ':' in line:
+                    title = line.split(':', 1)[1].strip()
+                    if title and title != '---':
+                        return title
+            
+            # Check for markdown headers (# or ##)
+            if line.startswith('#'):
+                title = line.lstrip('#').strip()
+                # Make sure it's not just formatting
+                if title and len(title) > 5 and title != '---':
+                    return title
+            
+            # Check for bold title patterns
+            if line.startswith('**') and line.endswith('**'):
+                title = line.strip('*').strip()
+                if title and len(title) > 5:
+                    return title
+            
+            # First substantial line that looks like a title
+            if (i < 10 and  # Within first 10 lines
+                len(line) > 10 and 
+                len(line) < 100 and
+                line != '---' and
+                not line.startswith(('Subject:', 'Difficulty:', 'Duration:', 'Learning'))):
+                return line
+        
+        # Fallback to topic-based title
+        return f"Introduction to {topic}"
+
+def _extract_content(self, response: str) -> str:
+    """Extract main content from response"""
+    # Look for content sections
+    content_sections = []
+    lines = response.split('\n')
+    in_content = False
+    skip_patterns = [
+        'CONTENT:', 'LESSON CONTENT:', 'LEARNING OBJECTIVES:', 
+        'ASSESSMENT:', 'PRACTICE:', 'TITLE:', 'LESSON TITLE:',
+        'Subject:', 'Difficulty:', 'Duration:', 'Learning Style'
+    ]
+    
+    for line in lines:
+        # Skip metadata and section headers
+        if any(pattern in line for pattern in skip_patterns):
+            if 'CONTENT:' in line.upper() or 'LESSON CONTENT:' in line.upper():
+                in_content = True
+            else:
+                in_content = False
+            continue
+        
+        # Stop at certain sections
+        if any(pattern in line for pattern in ['PREREQUISITES:', 'ASSESSMENT', 'QUESTIONS:', 'EXERCISES:']):
+            break
+        
+        # Collect content lines
+        if line.strip() and (in_content or len(content_sections) > 0):
+            content_sections.append(line)
+    
+    if content_sections:
+        return '\n'.join(content_sections)
+    else:
+        # Fallback: use the entire response, but clean it up
+        # Remove the first few lines which are usually metadata
+        cleaned_lines = []
+        metadata_done = False
+        for line in lines:
+            if not metadata_done:
+                # Skip lines that look like metadata
+                if any(pattern in line for pattern in skip_patterns[:5]):
+                    continue
+                else:
+                    metadata_done = True
+            if metadata_done:
+                cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines) if cleaned_lines else response
+        
     def _extract_learning_objectives(self, response: str) -> List[str]:
         """Extract learning objectives from response"""
         objectives = []

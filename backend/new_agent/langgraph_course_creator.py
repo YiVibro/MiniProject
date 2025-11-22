@@ -19,7 +19,7 @@ class LangGraphCourseCreator:
     """
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-flash") -> None:
-        self.api_key = api_key or os.getenv("AIzaSyCID-mm0AsMkDBJ5NJsDGTKx0LFTfQc594")
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self.model = model
         if genai is None or StateGraph is None:
             raise RuntimeError("LangGraph or google-generativeai is not installed.")
