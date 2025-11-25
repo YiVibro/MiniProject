@@ -27,13 +27,12 @@ export const Dashboard = () => {
   const [latestDoc, setLatestDoc] = useState<any>(null);
   const [view, setView] = useState<"dashboard" | "learn" | "quiz" | "learning-path" | "courses">("dashboard");
   const [isContinuing, setIsContinuing] = useState(false);
+  const [courseLoadingStates, setCourseLoadingStates] = useState<Record<string, boolean>>({});
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentCourseName, setCurrentCourseName] = useState<string | null>(null);
   const [currentCourseId, setCurrentCourseId] = useState<string | null>(null);
   const { toast } = useToast();
   const [currentCourseData, setCurrentCourseData] = useState<any>(null);
-  
-  // ✅ ADD: State to track which courses exist in DB
   const [coursesWithGeneration, setCoursesWithGeneration] = useState<Set<string>>(new Set());
 
   // ✅ ADD: Function to check if course exists in DB
@@ -225,7 +224,11 @@ export const Dashboard = () => {
     }
 
     try {
-      setIsContinuing(true);
+
+      //setIsContinuing(true);
+      setCourseLoadingStates(prev => ({ ...prev, [course.id]: true }));
+      console.log('Continuing learning for course:', course.title);
+
 
       // Validate course data
       if (!course.id && !course.title) {
@@ -249,8 +252,14 @@ export const Dashboard = () => {
 
       if (course.title) {
         requestPayload.course_name = String(course.title);
-      }
-
+      }else if (course.course_name) {
+      requestPayload.course_name = String(course.course_name);
+    } else if (course.name) {
+      requestPayload.course_name = String(course.name);
+    } else {
+      // Fallback - use the first part of the ID or a default name
+      requestPayload.course_name = `Course-${course.id || 'default'}`;
+    }
       console.log('Sending continue-learning request:', requestPayload);
 
       // Call the new continue-learning endpoint
@@ -332,7 +341,8 @@ export const Dashboard = () => {
         variant: "destructive",
       });
     } finally {
-      setIsContinuing(false);
+      //setIsContinuing(false);
+      setCourseLoadingStates(prev => ({ ...prev, [course.id]: false }) );
     }
   };
 
@@ -525,9 +535,9 @@ export const Dashboard = () => {
                         size="sm"
                         className="w-full gap-2"
                         onClick={() => handleContinueLearning(course)}
-                        disabled={isContinuing}
+                        disabled={courseLoadingStates[course.id] || false}
                       >
-                        {isContinuing ? (
+                        {courseLoadingStates[course.id] ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin" />
                             {coursesWithGeneration.has(course.title) ? 'Loading...' : 'Generating...'}

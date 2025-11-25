@@ -62,15 +62,22 @@ class AssessmentSystem:
         self.questions = {}  # question_id -> Question
         self.performance_data = {}  # user_id -> List[PerformanceAnalysis]
     
-    async def create_assessment(self, lesson_id: str, difficulty: str = "medium", 
-                               num_questions: int = 5, question_types: List[str] = None) -> Assessment:
-        """Create a new assessment"""
-        
-        if question_types is None:
-            question_types = ["multiple_choice", "short_answer"]
-        
+async def create_assessment(self, lesson_id: str, difficulty: str = "medium", 
+                           num_questions: int = 5, question_types: List[str] = None) -> Assessment:
+    """Create a new assessment - with enhanced error handling"""
+    
+    if question_types is None:
+        question_types = ["multiple_choice", "short_answer"]
+    
+    try:
         # Generate questions using LLM
         questions = await self._generate_questions(lesson_id, difficulty, num_questions, question_types)
+        
+        # ✅ ENHANCED: Ensure we have the expected number of questions
+        if len(questions) < num_questions:
+            print(f"Warning: Generated only {len(questions)} questions, expected {num_questions}")
+            # Add fallback questions if needed
+            questions.extend(self._generate_fallback_questions(num_questions - len(questions)))
         
         # Create assessment
         assessment = Assessment(
@@ -86,7 +93,46 @@ class AssessmentSystem:
         self.assessments[assessment.assessment_id] = assessment
         
         return assessment
+        
+    except Exception as e:
+        print(f"Error in create_assessment: {e}")
+        # Return a fallback assessment
+        return self._create_fallback_assessment(lesson_id, num_questions)
+    def _create_fallback_assessment(self, lesson_id: str, num_questions: int) -> Assessment:
+        """Create a fallback assessment when LLM generation fails"""
+        questions = self._generate_fallback_questions(num_questions)
+        
+        return Assessment(
+            assessment_id=str(uuid.uuid4()),
+            lesson_id=lesson_id,
+            questions=questions,
+            time_limit=num_questions * 2,
+            passing_score=0.7,
+            difficulty="medium"
+        )
     
+def _generate_fallback_questions(self, num_questions: int) -> List[Dict[str, Any]]:
+    """Generate fallback questions when LLM fails"""
+    questions = []
+    for i in range(num_questions):
+        questions.append({
+            "question_id": str(uuid.uuid4()),
+            "question_text": f"What is the key learning objective from this lesson?",
+            "question_type": "multiple_choice",
+            "options": [
+                "Understanding core concepts",
+                "Memorizing facts", 
+                "Practical application",
+                "Theoretical knowledge"
+            ],
+            "correct_answer": "Understanding core concepts",
+            "explanation": "The primary goal is to understand fundamental concepts that can be applied.",
+            "difficulty": 3,
+            "points": 1,
+            "tags": ["core_concepts"]
+        })
+    return questions
+
     async def _generate_questions(self, lesson_id: str, difficulty: str, 
                                  num_questions: int, question_types: List[str]) -> List[Dict[str, Any]]:
         """Generate questions using LLM"""
@@ -242,19 +288,32 @@ class AssessmentSystem:
             # Default: exact match
             return user_response == correct_answer
     
-    def _check_short_answer(self, user_answer: str, correct_answer: str) -> bool:
-        """Check short answer with fuzzy matching"""
-        
-        # Simple keyword matching
-        user_words = set(user_answer.split())
-        correct_words = set(correct_answer.split())
-        
-        # Check if user answer contains key terms from correct answer
-        overlap = len(user_words.intersection(correct_words))
-        total_correct_words = len(correct_words)
-        
-        # Consider correct if at least 70% of key terms are present
-        return overlap / total_correct_words >= 0.7 if total_correct_words > 0 else False
+    
+def _check_short_answer(self, user_answer: str, correct_answer: str) -> bool:
+    """Check short answer with better fuzzy matching"""
+    import re
+    
+    # Clean the text
+    user_clean = re.sub(r'[^\w\s]', '', user_answer.lower())
+    correct_clean = re.sub(r'[^\w\s]', '', correct_answer.lower())
+    
+    user_words = set(user_clean.split())
+    correct_words = set(correct_clean.split())
+    
+    # Remove common stop words
+    stop_words = {'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but'}
+    user_words = user_words - stop_words
+    correct_words = correct_words - stop_words
+    
+    if not correct_words:  # Avoid division by zero
+        return False
+    
+    # Calculate overlap
+    overlap = len(user_words.intersection(correct_words))
+    similarity = overlap / len(correct_words)
+    
+    # Consider correct if at least 60% of key terms are present
+    return similarity >= 0.6
     
     async def _generate_feedback(self, detailed_answers: List[Dict[str, Any]], 
                                 percentage: float) -> List[str]:

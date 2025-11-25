@@ -6,6 +6,7 @@ import os
 from app.routes.course_routes import router as course_router
 from app.routes import course_routes
 from app.routes.agents import router as agents_router
+from app.routes.agents import router as assessment_router
 # Load env
 load_dotenv()
 
@@ -48,6 +49,7 @@ app.include_router(agents.router, tags=["Agents"])
 app.include_router(course_routes.router, prefix="/course", tags=["Course"])
 app.include_router(course_router)
 app.include_router(agents_router)
+app.include_router(assessment_router)
 
 @app.get("/")
 def root():
