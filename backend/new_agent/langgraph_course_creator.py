@@ -2,6 +2,11 @@
 import os
 import json
 from typing import Any, Dict, List
+from datetime import datetime
+import logging
+
+# Set up proper logging
+logger = logging.getLogger(__name__)
 
 # Minimal LangGraph + Gemini integration to generate a curriculum from a user goal
 try:
@@ -35,6 +40,36 @@ class LangGraphCourseCreator:
         self._graph.add_edge("generate", END)
         self._app = self._graph.compile()
 
+    def _clean_state_for_serialization(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean state recursively to ensure all values are JSON serializable"""
+        def clean_value(value: Any) -> Any:
+            """Recursively clean a value to be JSON serializable"""
+            if isinstance(value, datetime):
+                # Convert datetime to ISO format string
+                return value.isoformat()
+            elif isinstance(value, dict):
+                # Recursively clean dictionary
+                return {k: clean_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                # Recursively clean list
+                return [clean_value(item) for item in value]
+            elif isinstance(value, tuple):
+                # Convert tuple to list and clean
+                return [clean_value(item) for item in value]
+            else:
+                # Try to serialize, convert to string if it fails
+                try:
+                    json.dumps(value)
+                    return value
+                except (TypeError, ValueError):
+                    return str(value)
+        
+        # Clean the entire state dictionary recursively
+        cleaned = {}
+        for key, value in state.items():
+            cleaned[key] = clean_value(value)
+        return cleaned
+
     def _prompt(self, inputs: Dict[str, Any]) -> str:
         subject = inputs.get("subject")
         topic = inputs.get("topic")
@@ -42,6 +77,12 @@ class LangGraphCourseCreator:
         focus = inputs.get("focus")
         user_profile = inputs.get("user_profile", {})
         goal = inputs.get("goal")
+        
+        # Ensure user_profile is serializable for the prompt
+        try:
+            user_profile_str = json.dumps(user_profile, default=str)
+        except (TypeError, ValueError):
+            user_profile_str = str(user_profile)
         
         # ✅ IMPROVED PROMPT: More structured and explicit JSON format
         return f"""Create a course curriculum in STRICT JSON format.
@@ -84,7 +125,7 @@ COURSE REQUIREMENTS:
 - Topic: {topic}
 - Weeks: {weeks}
 - Focus: {focus}
-- User Profile: {json.dumps(user_profile)}
+- User Profile: {user_profile_str}
 - Goal: {goal}
 
 CRITICAL RULES:
@@ -129,33 +170,35 @@ OUTPUT ONLY THE JSON OBJECT. DO NOT WRITE ANY OTHER TEXT.
             data = json.loads(text)
             
         except json.JSONDecodeError as e:
-            print(f"First JSON parse failed: {e}")
+            logger.error(f"First JSON parse failed: {e}")
+            logger.error(f"Response text: {text[:500]}")
             # ✅ IMPROVED: Second attempt with more specific instructions
             retry_prompt = prompt + "\n\nIMPORTANT: Your previous response was not valid JSON. Please return ONLY the JSON object without any additional text, markdown, or code blocks."
-            response = model.generate_content(retry_prompt)
-            text = response.text.strip()
-            
-            # Clean up again
-            if text.startswith("```json"):
-                text = text[7:]
-            if text.endswith("```"):
-                text = text[:-3]
-            text = text.strip()
-            
             try:
+                response = model.generate_content(retry_prompt)
+                text = response.text.strip()
+                
+                # Clean up again
+                if text.startswith("```json"):
+                    text = text[7:]
+                if text.endswith("```"):
+                    text = text[:-3]
+                text = text.strip()
+                
                 data = json.loads(text)
-            except json.JSONDecodeError as e2:
-                print(f"Second JSON parse failed: {e2}")
-                # ✅ FALLBACK: Return a basic valid structure
+            except (json.JSONDecodeError, Exception) as e2:
+                logger.error(f"Second JSON parse failed: {e2}")
+                logger.error(f"Retry response text: {text[:500]}")
+                # ✅ FIXED FALLBACK: Return proper number of lessons
                 data = self._get_fallback_course(state)
         
         # ✅ IMPROVED: Enhanced validation
         if not isinstance(data, dict):
-            print("Model output is not a JSON object, using fallback")
+            logger.error("Model output is not a JSON object, using fallback")
             data = self._get_fallback_course(state)
         
         if "curriculum" not in data:
-            print("Missing curriculum in output, using fallback")
+            logger.error("Missing curriculum in output, using fallback")
             data = self._get_fallback_course(state)
         
         if "learning_path" not in data:
@@ -188,22 +231,26 @@ OUTPUT ONLY THE JSON OBJECT. DO NOT WRITE ANY OTHER TEXT.
                     }
                 ])
 
-        # Return merged state
+        # Return merged state - ensure it's serializable
         out = dict(state)
         out["curriculum"] = data["curriculum"]
         out["learning_path"] = data["learning_path"]
-        return out
+        return self._clean_state_for_serialization(out)
 
     def _get_fallback_course(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a fallback course structure when JSON parsing fails"""
         subject = state.get("subject", "General")
         topic = state.get("topic", "Introduction")
         weeks = state.get("weeks", 4)
+        total_lessons = weeks * 3  # ✅ FIXED: Generate proper number of lessons
         
-        return {
-            "curriculum": [
-                {
-                    "id": "lesson_1",
+        curriculum = []
+        for i in range(total_lessons):
+            lesson_num = i + 1
+            if lesson_num == 1:
+                # First lesson - introductory
+                curriculum.append({
+                    "id": f"lesson_{lesson_num}",
                     "title": f"Introduction to {topic}",
                     "difficulty": "beginner",
                     "duration": 45,
@@ -224,7 +271,7 @@ OUTPUT ONLY THE JSON OBJECT. DO NOT WRITE ANY OTHER TEXT.
                             "type": "multiple_choice",
                             "options": [
                                 "Theory only",
-                                "Practical application",
+                                "Practical application", 
                                 "Memorization",
                                 "All of the above"
                             ],
@@ -237,8 +284,66 @@ OUTPUT ONLY THE JSON OBJECT. DO NOT WRITE ANY OTHER TEXT.
                             "answer": "It provides foundational knowledge for advanced topics"
                         }
                     ]
-                }
-            ],
+                })
+            elif lesson_num <= total_lessons - 1:
+                # Middle lessons
+                curriculum.append({
+                    "id": f"lesson_{lesson_num}",
+                    "title": f"{topic} Core Concepts - Part {lesson_num-1}",
+                    "difficulty": "intermediate",
+                    "duration": 60,
+                    "content": f"This lesson builds on foundational knowledge to explore deeper concepts in {topic}. You'll learn practical applications and problem-solving techniques.",
+                    "learning_objectives": [
+                        f"Apply {topic} concepts to real-world scenarios",
+                        "Develop problem-solving strategies",
+                        "Analyze complex situations using core principles"
+                    ],
+                    "prerequisites": [f"lesson_{lesson_num-1}"],
+                    "subtopics": [
+                        {"title": "Advanced concepts", "deadline_minutes": 25},
+                        {"title": "Practical applications", "deadline_minutes": 20},
+                        {"title": "Problem-solving techniques", "deadline_minutes": 15}
+                    ],
+                    "questions": [
+                        {
+                            "question": f"How would you apply {topic} concepts to solve a real-world problem?",
+                            "type": "short_answer",
+                            "options": [],
+                            "answer": "By identifying the core principles and adapting them to the specific context"
+                        }
+                    ]
+                })
+            else:
+                # Final lesson
+                curriculum.append({
+                    "id": f"lesson_{lesson_num}",
+                    "title": f"Advanced Applications of {topic}",
+                    "difficulty": "advanced",
+                    "duration": 75,
+                    "content": f"This final lesson focuses on advanced applications and synthesis of all {topic} concepts learned throughout the course.",
+                    "learning_objectives": [
+                        f"Synthesize all {topic} concepts",
+                        "Create advanced applications",
+                        "Evaluate complex scenarios critically"
+                    ],
+                    "prerequisites": [f"lesson_{lesson_num-1}"],
+                    "subtopics": [
+                        {"title": "Advanced synthesis", "deadline_minutes": 30},
+                        {"title": "Real-world case studies", "deadline_minutes": 25},
+                        {"title": "Future applications", "deadline_minutes": 20}
+                    ],
+                    "questions": [
+                        {
+                            "question": f"What are the most important advanced applications of {topic}?",
+                            "type": "short_answer",
+                            "options": [],
+                            "answer": "The applications that solve complex real-world problems and drive innovation"
+                        }
+                    ]
+                })
+        
+        return {
+            "curriculum": curriculum,
             "learning_path": {
                 "title": f"{subject} Course",
                 "description": f"Learn {topic} through practical examples and applications",
@@ -250,24 +355,32 @@ OUTPUT ONLY THE JSON OBJECT. DO NOT WRITE ANY OTHER TEXT.
 
     async def create_course(self, *, subject: str, topic: str, weeks: int, focus: str, user_profile: Dict[str, Any], goal: str) -> Dict[str, Any]:
         """Run the graph to generate a course JSON."""
-        # LangGraph supports sync; call in thread if needed. For simplicity, run sync path.
+        # Clean inputs to ensure serializability
+        cleaned_user_profile = self._clean_state_for_serialization(user_profile)
+        
         inputs: Dict[str, Any] = {
             "subject": subject,
             "topic": topic,
             "weeks": weeks,
             "focus": focus,
-            "user_profile": user_profile,
+            "user_profile": cleaned_user_profile,
             "goal": goal,
         }
+        
         try:
-            result = self._app.invoke(inputs)
+            # Clean the entire inputs dict before passing to LangGraph
+            cleaned_inputs = self._clean_state_for_serialization(inputs)
+            result = self._app.invoke(cleaned_inputs)
+            
+            # Ensure the result is clean before returning
+            clean_result = self._clean_state_for_serialization(result)
             return {
-                "curriculum": result.get("curriculum", []),
-                "learning_path": result.get("learning_path", {"title": f"{subject} Course"}),
+                "curriculum": clean_result.get("curriculum", []),
+                "learning_path": clean_result.get("learning_path", {"title": f"{subject} Course"}),
             }
         except Exception as e:
-            print(f"Error in create_course: {e}")
-            # Return fallback course
+            logger.error(f"Error in create_course: {e}")
+            # Return fallback course with proper lesson count
             return self._get_fallback_course(inputs)
 
     # Convenience wrapper for a single-call API

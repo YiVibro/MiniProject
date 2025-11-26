@@ -1,3 +1,4 @@
+// frontend/src/components/hooks/useLearningPath.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/components/ui/use-toast';
 import { agentService, type LearningPathData, type LearningPathNode, type AssessmentResponse, type EvaluateAssessmentResponse, type ContinueLearningResponse } from '@/lib/agentService';
@@ -40,49 +41,51 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
     console.log('loadLearningPath called with courseId:', courseId);
     console.log('Current user:', user);
 
-    // First, check if we have course data from continue-learning in sessionStorage
+    // First, check if we have matching course data in sessionStorage
     const courseDataStr = sessionStorage.getItem('currentCourseData');
     if (courseDataStr) {
       try {
         const courseData: ContinueLearningResponse = JSON.parse(courseDataStr);
-        console.log('Found course data in sessionStorage, transforming to LearningPathData');
-        
-        // Transform continue-learning response to LearningPathData format
-        const transformedData: LearningPathData = {
-          path_id: courseData.course_id,
-          title: courseData.learning_path.title || 'Your Course',
-          description: courseData.learning_path.description || '',
-          nodes: courseData.curriculum.map((lesson, index) => ({
-            id: lesson.id,
-            type: 'lesson' as const,
-            title: lesson.title,
-            description: lesson.content?.substring(0, 100) + '...' || `Learn about ${lesson.title}`,
-            status: index < courseData.progress.completed_lessons 
-              ? 'completed' as const 
-              : index === courseData.progress.completed_lessons 
-                ? 'current' as const 
-                : 'locked' as const,
-            duration: lesson.duration || 30,
-            difficulty: lesson.difficulty || 'medium',
-            prerequisites: lesson.prerequisites || [],
-            metadata: {
-              learning_objectives: lesson.learning_objectives || [],
-              content: lesson.content || '',
-              assessment_questions: lesson.assessment_questions || [],
-              practice_exercises: lesson.practice_exercises || []
-            }
-          })),
-          current_node_id: courseData.curriculum[courseData.progress.current_lesson - 1]?.id || courseData.curriculum[0]?.id || '',
-          progress_percentage: courseData.progress.progress_percent,
-          estimated_total_duration: courseData.learning_path.estimated_duration || courseData.curriculum.reduce((sum, l) => sum + (l.duration || 30), 0)
-        };
-        
-        setData(transformedData);
-        const current = transformedData.nodes.find(node => node.id === transformedData.current_node_id);
-        setCurrentLesson(current || null);
-        setProgress(transformedData.progress_percentage);
-        setIsLoading(false);
-        return;
+        if (courseData.course_id === courseId) {
+          console.log('Using cached course data from sessionStorage for courseId:', courseId);
+          // Transform continue-learning response to LearningPathData format
+          const transformedData: LearningPathData = {
+            path_id: courseData.course_id,
+            title: courseData.learning_path.title || 'Your Course',
+            description: courseData.learning_path.description || '',
+            nodes: courseData.curriculum.map((lesson, index) => ({
+              id: lesson.id,
+              type: 'lesson' as const,
+              title: lesson.title,
+              description: lesson.content?.substring(0, 100) + '...' || `Learn about ${lesson.title}`,
+              status: index < courseData.progress.completed_lessons 
+                ? 'completed' as const 
+                : index === courseData.progress.completed_lessons 
+                  ? 'current' as const 
+                  : 'locked' as const,
+              duration: lesson.duration || 30,
+              difficulty: lesson.difficulty || 'medium',
+              prerequisites: lesson.prerequisites || [],
+              metadata: {
+                learning_objectives: lesson.learning_objectives || [],
+                content: lesson.content || '',
+                assessment_questions: lesson.assessment_questions || [],
+                practice_exercises: lesson.practice_exercises || []
+              }
+            })),
+            current_node_id: courseData.curriculum[courseData.progress.current_lesson - 1]?.id || courseData.curriculum[0]?.id || '',
+            progress_percentage: courseData.progress.progress_percent,
+            estimated_total_duration: courseData.learning_path.estimated_duration || courseData.curriculum.reduce((sum, l) => sum + (l.duration || 30), 0)
+          };
+          setData(transformedData);
+          const current = transformedData.nodes.find(node => node.id === transformedData.current_node_id);
+          setCurrentLesson(current || null);
+          setProgress(transformedData.progress_percentage);
+          setIsLoading(false);
+          return;
+        } else {
+          console.log('Cached course does not match requested courseId. Ignoring cache.');
+        }
       } catch (err) {
         console.error('Error parsing course data from sessionStorage:', err);
         // Fall through to normal loading
@@ -138,27 +141,85 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
 
     try {
       console.log('Starting lesson:', nodeId);
-      // Start learning session with backend
-      const sessionResponse = await agentService.startLearningSession({
-        user_id: user.id,
-        lesson_id: nodeId,
-        session_preferences: {
-          node_type: data.nodes.find(n => n.id === nodeId)?.type,
-          difficulty: data.nodes.find(n => n.id === nodeId)?.difficulty
-        }
-      });
+      try {
+        await agentService.startLearningSession({
+          user_id: user.id,
+          lesson_id: nodeId,
+          session_preferences: {
+            node_type: data.nodes.find(n => n.id === nodeId)?.type,
+            difficulty: data.nodes.find(n => n.id === nodeId)?.difficulty
+          }
+        });
+      } catch (e) {
+      }
 
-      // Update UI state
       setData(prev => prev ? {
         ...prev,
         current_node_id: nodeId
       } : null);
 
-      setCurrentLesson(data.nodes.find(n => n.id === nodeId) || null);
+      const node = data.nodes.find(n => n.id === nodeId);
+      let subject = 'General';
+      let learningStyle = 'balanced';
+      let difficulty = node?.difficulty || 'medium';
+      let duration = node?.duration || 45;
+      let courseIdFromSession: string | undefined = undefined;
+      try {
+        const courseDataStr = sessionStorage.getItem('currentCourseData');
+        if (courseDataStr) {
+          const courseData = JSON.parse(courseDataStr);
+          subject = courseData?.requirements?.subject || subject;
+          learningStyle = courseData?.requirements?.learning_style || learningStyle;
+          courseIdFromSession = courseData?.course_id || courseIdFromSession;
+        }
+      } catch (e) {}
+
+      const topic = node?.title || 'Lesson';
+      const generated = await agentService.generateLesson({
+        subject,
+        topic,
+        difficulty,
+        duration,
+        learning_style: learningStyle,
+        user_id: user.id,
+        course_id: courseIdFromSession,
+        lesson_id: nodeId,
+        user_profile: user ? {
+          user_id: user.id,
+          name: (user as any).name || 'Learner',
+          email: (user as any).email || `${user.id}@example.com`,
+          learning_style: learningStyle,
+          preferred_difficulty: difficulty,
+          available_time: 60,
+          learning_goals: [],
+          interests: []
+        } : undefined
+      });
+
+      setData(prev => {
+        if (!prev) return null;
+        const updatedNodes = prev.nodes.map(n => n.id === nodeId ? {
+          ...n,
+          title: generated.title || n.title,
+          difficulty: generated.difficulty || n.difficulty,
+          duration: generated.duration || n.duration,
+          metadata: {
+            ...(n.metadata || {}),
+            content: generated.content,
+            learning_objectives: generated.learning_objectives || [],
+            assessment_questions: generated.assessment_questions || [],
+            practice_exercises: generated.practice_exercises || [],
+            generated: true
+          }
+        } : n);
+        const current = updatedNodes.find(n => n.id === nodeId) || null;
+        setCurrentLesson(current);
+        return { ...prev, nodes: updatedNodes };
+      });
 
       toast({
-        title: 'Lesson started!',
-        description: 'Your learning session has begun',
+        title: 'Lesson generated',
+        description: 'Your personalized lesson is ready',
       });
 
     } catch (error: any) {
@@ -254,6 +315,14 @@ export const useLearningPath = (): LearningPathState & LearningPathActions => {
         activity: 'lesson_completed',
         data: {
           node_id: nodeId,
+          lesson_id: nodeId,
+          course_id: (function(){
+            try {
+              const s = sessionStorage.getItem('currentCourseData');
+              if (s) return JSON.parse(s)?.course_id;
+            } catch (e) {}
+            return undefined;
+          })(),
           completion_time: new Date().toISOString(),
           progress_percent: newProgress
         }

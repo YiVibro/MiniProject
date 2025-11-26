@@ -28,6 +28,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 import { agentService } from '@/lib/agentService';
 import { LessonContentView } from './LessonContentView';
+import { useAuth } from '@/store/AuthContext';
 
 interface LearningPathViewProps {
   courseId?: string;
@@ -77,6 +78,7 @@ interface CourseData {
 export const LearningPathView: React.FC<LearningPathViewProps> = (props) => {
   const routerParams = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const courseId = props.courseId || routerParams.courseId || '';
   const courseTitle = props.courseTitle || 'Your Course';
@@ -134,10 +136,13 @@ export const LearningPathView: React.FC<LearningPathViewProps> = (props) => {
           console.log('Fetching course data from backend...');
           // ✅ FIXED: Use the correct service method based on your API
           const response = await agentService.continueLearning({
-            user_id: 'current-user', // You'll need to get this from auth context
+            user_id: user?.id || '',
             course_id: courseId
           });
           courseData = response;
+          try {
+            sessionStorage.setItem('currentCourseData', JSON.stringify(courseData));
+          } catch (e) {}
           console.log('Course data from backend:', courseData);
         } else {
           throw new Error('Course ID is required');
@@ -175,10 +180,23 @@ export const LearningPathView: React.FC<LearningPathViewProps> = (props) => {
           }
         }));
 
-        // ✅ FIXED: Call loadLearningPath with just the courseId string
-        // Remove the object parameter and just pass the courseId
+        // ✅ FIXED: Call loadLearningPath with proper parameter type
         if (loadLearningPath && typeof loadLearningPath === 'function') {
-          await loadLearningPath(courseId); // Just pass the string
+          // Check the function signature and call appropriately
+          console.log('Calling loadLearningPath with courseId:', courseId);
+          
+          // Option 1: If loadLearningPath expects just the course ID string
+          await loadLearningPath(courseId);
+          
+          // Option 2: If loadLearningPath expects an object with courseId property
+          // await loadLearningPath({ courseId });
+          
+          // Option 3: If loadLearningPath expects the full course data
+          // await loadLearningPath(courseData);
+          
+          console.log('loadLearningPath completed successfully');
+        } else {
+          console.warn('loadLearningPath is not a function or not provided');
         }
 
         toast({

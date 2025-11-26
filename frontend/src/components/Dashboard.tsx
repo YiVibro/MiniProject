@@ -43,7 +43,7 @@ export const Dashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, course_name: courseName })
       });
-      
+
       const data = await response.json();
       return data.exists;
     } catch (error) {
@@ -56,19 +56,19 @@ export const Dashboard = () => {
   useEffect(() => {
     const checkExistingCourses = async () => {
       if (!user?.id || !courses) return;
-      
+
       const existingCourses = new Set<string>();
-      
+
       for (const course of courses) {
         const exists = await checkCourseExists(user.id, course.title);
         if (exists) {
           existingCourses.add(course.title);
         }
       }
-      
+
       setCoursesWithGeneration(existingCourses);
     };
-    
+
     checkExistingCourses();
   }, [user?.id, courses]);
 
@@ -252,14 +252,14 @@ export const Dashboard = () => {
 
       if (course.title) {
         requestPayload.course_name = String(course.title);
-      }else if (course.course_name) {
-      requestPayload.course_name = String(course.course_name);
-    } else if (course.name) {
-      requestPayload.course_name = String(course.name);
-    } else {
-      // Fallback - use the first part of the ID or a default name
-      requestPayload.course_name = `Course-${course.id || 'default'}`;
-    }
+      } else if (course.course_name) {
+        requestPayload.course_name = String(course.course_name);
+      } else if (course.name) {
+        requestPayload.course_name = String(course.name);
+      } else {
+        // Fallback - use the first part of the ID or a default name
+        requestPayload.course_name = `Course-${course.id || 'default'}`;
+      }
       console.log('Sending continue-learning request:', requestPayload);
 
       // Call the new continue-learning endpoint
@@ -290,7 +290,7 @@ export const Dashboard = () => {
       };
 
       console.log('Storing course data in sessionStorage:', courseData);
-      
+
       // ✅ Store the complete course data
       sessionStorage.setItem('currentCourseData', JSON.stringify(courseData));
 
@@ -342,7 +342,7 @@ export const Dashboard = () => {
       });
     } finally {
       //setIsContinuing(false);
-      setCourseLoadingStates(prev => ({ ...prev, [course.id]: false }) );
+      setCourseLoadingStates(prev => ({ ...prev, [course.id]: false }));
     }
   };
 

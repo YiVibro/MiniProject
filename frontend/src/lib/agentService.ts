@@ -241,6 +241,36 @@ export interface ContinueLearningResponse {
   is_cached: boolean;
 }
 
+export interface GenerateLessonRequest {
+  subject: string;
+  topic: string;
+  difficulty?: string;
+  duration?: number;
+  learning_style?: string;
+  user_profile?: Record<string, any>;
+  user_id?: string;
+  course_id?: string;
+  lesson_id?: string;
+}
+
+export interface GeneratedLessonResponse {
+  lesson_id: string;
+  title: string;
+  content: string;
+  difficulty: string;
+  duration: number;
+  learning_objectives: string[];
+  prerequisites: string[];
+  assessment_questions: Array<{
+    question: string;
+    type: string;
+    options?: string[];
+    correct_answer?: string;
+    explanation?: string;
+  }>;
+  practice_exercises: string[];
+}
+
 export class AgentService {
   private baseUrl = '/agents';
 
@@ -383,6 +413,19 @@ export class AgentService {
       // Return mock evaluation if backend is not available
       console.log('Returning mock evaluation as fallback');
       return this.getMockEvaluation(request);
+    }
+  }
+
+  // Lesson Generation
+  async generateLesson(request: GenerateLessonRequest): Promise<GeneratedLessonResponse> {
+    try {
+      console.log('Generating lesson:', request);
+      const response = await api.post(`${this.baseUrl}/generate-lesson`, request);
+      console.log('Lesson generated:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error generating lesson:', error);
+      throw error;
     }
   }
 
