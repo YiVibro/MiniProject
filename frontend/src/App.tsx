@@ -14,6 +14,7 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 
 import { Dashboard } from "./components/Dashboard";
+import { GamificationDashboard } from "./components/GamificationDashboard";
 import AIChatInterface  from "./components/AIChatInterface";
 import { CoursesPage } from "./components/CoursesPage";
 import { NotesSection } from "./components/NotesSection";
@@ -187,6 +188,17 @@ const App = () => {
                     <RequireAuth>
                       <Layout>
                         <Profile />
+                      </Layout>
+                    </RequireAuth>
+                  }
+                />
+
+                <Route
+                  path="/gamification"
+                  element={
+                    <RequireAuth>
+                      <Layout>
+                        <GamificationDashboard />
                       </Layout>
                     </RequireAuth>
                   }

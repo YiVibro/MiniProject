@@ -40,7 +40,8 @@ app.add_middleware(
 )
 
 # Import routers
-from app.routes import auth, oauth, agents
+from app.routes import auth, oauth, agents, profile, gamification
+
 
 # Include all routers
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
@@ -50,6 +51,9 @@ app.include_router(course_routes.router, prefix="/course", tags=["Course"])
 app.include_router(course_router)
 app.include_router(agents_router)
 app.include_router(assessment_router)
+app.include_router(profile.router, tags=["Profile"])
+app.include_router(gamification.router, tags=["Gamification"])
+
 
 @app.get("/")
 def root():

@@ -6,6 +6,8 @@ import { ManipulatePanel } from "./ManipulatePanel";
 import { MessageBubble } from "./MessageBubble";    
 import { agentService } from "../lib/agentService";
 import { useAuth } from "../store/AuthContext";
+import { awardXP, checkAchievements, incrementAIInteraction } from "@/lib/gamificationClient";
+import { notifyAchievement, notifyXP } from "./AchievementNotification";
 
 interface ChatViewProps {
   documentId?: number;
@@ -48,6 +50,18 @@ export const ChatView = ({ documentId, onBack, sessionId: propSessionId, courseN
           sender: "ai" as const, 
           text: response.response || response.message || "I'm here to help you learn!" 
         }]);
+        // Gamification: AI interaction
+        if (user?.id) {
+          try {
+            await incrementAIInteraction(user.id);
+            const award = await awardXP(user.id, 2, "ai_interaction");
+            notifyXP(2);
+            const chk = await checkAchievements(user.id);
+            (chk.unlocked || []).forEach((u: any) => notifyAchievement(u.title, u.xp_reward));
+          } catch (e) {
+            console.warn("Gamification hooks failed", e);
+          }
+        }
       } else if (documentId) {
         // Handle PDF chat
         const res = await fetch("http://127.0.0.1:8000/api/chat/ask", {
@@ -63,6 +77,18 @@ export const ChatView = ({ documentId, onBack, sessionId: propSessionId, courseN
         if (!res.ok) throw new Error("Chat request failed");
         const data = await res.json();
         setMessages((prev) => [...prev, { sender: "ai" as const, text: data.response || "No reply" }]);
+        // Gamification: AI interaction
+        if (user?.id) {
+          try {
+            await incrementAIInteraction(user.id);
+            const award = await awardXP(user.id, 2, "ai_interaction");
+            notifyXP(2);
+            const chk = await checkAchievements(user.id);
+            (chk.unlocked || []).forEach((u: any) => notifyAchievement(u.title, u.xp_reward));
+          } catch (e) {
+            console.warn("Gamification hooks failed", e);
+          }
+        }
       }
     } catch (err) {
       console.error("Error sending message:", err);
