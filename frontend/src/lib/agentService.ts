@@ -394,7 +394,22 @@ export class AgentService {
       console.log('Creating assessment:', request);
       const response = await api.post(`${this.baseUrl}/create-assessment`, request);
       console.log('Assessment created:', response.data);
-      return response.data;
+      
+      // Transform the response to match frontend expectations
+      const transformed = {
+        ...response.data,
+        questions: (response.data.questions || []).map((q: any) => ({
+          id: q.id || q.question_id || `q_${Math.random()}`,
+          question: q.question || q.question_text || 'Question',
+          type: q.type || q.question_type || 'multiple_choice',
+          options: q.options || [],
+          correct_answer: q.correct_answer || '',
+          explanation: q.explanation || ''
+        }))
+      };
+      
+      console.log('Transformed assessment:', transformed);
+      return transformed;
     } catch (error: any) {
       console.error('Error creating assessment:', error);
       // Return mock assessment if backend is not available

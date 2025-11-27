@@ -62,42 +62,43 @@ class AssessmentSystem:
         self.questions = {}  # question_id -> Question
         self.performance_data = {}  # user_id -> List[PerformanceAnalysis]
     
-async def create_assessment(self, lesson_id: str, difficulty: str = "medium", 
-                           num_questions: int = 5, question_types: List[str] = None) -> Assessment:
-    """Create a new assessment - with enhanced error handling"""
+    async def create_assessment(self, lesson_id: str, difficulty: str = "medium", 
+                               num_questions: int = 5, question_types: List[str] = None) -> Assessment:
+        """Create a new assessment - with enhanced error handling"""
+        
+        if question_types is None:
+            question_types = ["multiple_choice", "short_answer"]
+        
+        try:
+            # Generate questions using LLM
+            questions = await self._generate_questions(lesson_id, difficulty, num_questions, question_types)
+            
+            # ✅ ENHANCED: Ensure we have the expected number of questions
+            if len(questions) < num_questions:
+                print(f"Warning: Generated only {len(questions)} questions, expected {num_questions}")
+                # Add fallback questions if needed
+                questions.extend(self._generate_fallback_questions(num_questions - len(questions)))
+            
+            # Create assessment
+            assessment = Assessment(
+                assessment_id=str(uuid.uuid4()),
+                lesson_id=lesson_id,
+                questions=questions,
+                time_limit=num_questions * 2,  # 2 minutes per question
+                passing_score=0.7,
+                difficulty=difficulty
+            )
+            
+            # Store assessment
+            self.assessments[assessment.assessment_id] = assessment
+            
+            return assessment
+            
+        except Exception as e:
+            print(f"Error in create_assessment: {e}")
+            # Return a fallback assessment
+            return self._create_fallback_assessment(lesson_id, num_questions)
     
-    if question_types is None:
-        question_types = ["multiple_choice", "short_answer"]
-    
-    try:
-        # Generate questions using LLM
-        questions = await self._generate_questions(lesson_id, difficulty, num_questions, question_types)
-        
-        # ✅ ENHANCED: Ensure we have the expected number of questions
-        if len(questions) < num_questions:
-            print(f"Warning: Generated only {len(questions)} questions, expected {num_questions}")
-            # Add fallback questions if needed
-            questions.extend(self._generate_fallback_questions(num_questions - len(questions)))
-        
-        # Create assessment
-        assessment = Assessment(
-            assessment_id=str(uuid.uuid4()),
-            lesson_id=lesson_id,
-            questions=questions,
-            time_limit=num_questions * 2,  # 2 minutes per question
-            passing_score=0.7,
-            difficulty=difficulty
-        )
-        
-        # Store assessment
-        self.assessments[assessment.assessment_id] = assessment
-        
-        return assessment
-        
-    except Exception as e:
-        print(f"Error in create_assessment: {e}")
-        # Return a fallback assessment
-        return self._create_fallback_assessment(lesson_id, num_questions)
     def _create_fallback_assessment(self, lesson_id: str, num_questions: int) -> Assessment:
         """Create a fallback assessment when LLM generation fails"""
         questions = self._generate_fallback_questions(num_questions)
@@ -111,27 +112,81 @@ async def create_assessment(self, lesson_id: str, difficulty: str = "medium",
             difficulty="medium"
         )
     
-def _generate_fallback_questions(self, num_questions: int) -> List[Dict[str, Any]]:
-    """Generate fallback questions when LLM fails"""
-    questions = []
-    for i in range(num_questions):
-        questions.append({
-            "question_id": str(uuid.uuid4()),
-            "question_text": f"What is the key learning objective from this lesson?",
-            "question_type": "multiple_choice",
-            "options": [
-                "Understanding core concepts",
-                "Memorizing facts", 
-                "Practical application",
-                "Theoretical knowledge"
-            ],
-            "correct_answer": "Understanding core concepts",
-            "explanation": "The primary goal is to understand fundamental concepts that can be applied.",
-            "difficulty": 3,
-            "points": 1,
-            "tags": ["core_concepts"]
-        })
-    return questions
+    def _generate_fallback_questions(self, num_questions: int) -> List[Dict[str, Any]]:
+        """Generate fallback questions when LLM fails - with varied content"""
+        fallback_templates = [
+            {
+                "question_text": "What is the key learning objective from this lesson?",
+                "options": [
+                    "Understanding core concepts",
+                    "Memorizing facts", 
+                    "Practical application",
+                    "Theoretical knowledge"
+                ],
+                "correct_answer": "Understanding core concepts",
+                "explanation": "The primary goal is to understand fundamental concepts that can be applied.",
+            },
+            {
+                "question_text": "Which of the following best describes the main topic covered?",
+                "options": [
+                    "A foundational concept essential for advanced topics",
+                    "A superficial overview of the subject",
+                    "An outdated approach",
+                    "A theoretical exercise"
+                ],
+                "correct_answer": "A foundational concept essential for advanced topics",
+                "explanation": "This lesson provides foundational knowledge that builds toward more advanced topics.",
+            },
+            {
+                "question_text": "How can you apply what you learned in a practical scenario?",
+                "options": [
+                    "By implementing the core principles in real-world situations",
+                    "By memorizing all the definitions",
+                    "By ignoring edge cases",
+                    "By following only traditional approaches"
+                ],
+                "correct_answer": "By implementing the core principles in real-world situations",
+                "explanation": "Practical application involves taking learned principles and implementing them effectively.",
+            },
+            {
+                "question_text": "What is a critical takeaway from this lesson?",
+                "options": [
+                    "Mastering the fundamental concepts enables better problem-solving",
+                    "The details don't matter much",
+                    "One approach works for all scenarios",
+                    "Practice is unnecessary"
+                ],
+                "correct_answer": "Mastering the fundamental concepts enables better problem-solving",
+                "explanation": "Strong foundational understanding is critical for tackling complex problems.",
+            },
+            {
+                "question_text": "Which skill would you develop through this lesson?",
+                "options": [
+                    "The ability to understand and apply core concepts",
+                    "Memorization without understanding",
+                    "Random problem-solving",
+                    "Avoiding the subject matter"
+                ],
+                "correct_answer": "The ability to understand and apply core concepts",
+                "explanation": "This lesson develops conceptual understanding and practical application skills.",
+            },
+        ]
+        
+        questions = []
+        for i in range(num_questions):
+            template = fallback_templates[i % len(fallback_templates)]
+            questions.append({
+                "question_id": str(uuid.uuid4()),
+                "question_text": template["question_text"],
+                "question_type": "multiple_choice",
+                "options": template["options"],
+                "correct_answer": template["correct_answer"],
+                "explanation": template["explanation"],
+                "difficulty": 2 + (i % 3),  # Vary difficulty from 2-4
+                "points": 1,
+                "tags": ["core_concepts", "practical_application"]
+            })
+        return questions
 
     async def _generate_questions(self, lesson_id: str, difficulty: str, 
                                  num_questions: int, question_types: List[str]) -> List[Dict[str, Any]]:
@@ -155,10 +210,23 @@ def _generate_fallback_questions(self, num_questions: int) -> List[Dict[str, Any
         Format as structured questions that can be used for assessment.
         """
         
-        response = await self.llm_service.generate_response(prompt)
+        try:
+            print(f"[Assessment] Attempting to generate {num_questions} {difficulty} questions for lesson {lesson_id}")
+            response = await self.llm_service.generate_response(prompt)
+            print(f"[Assessment] LLM response received: {len(response)} characters")
+            questions = self._parse_questions_from_response(response, num_questions)
+            print(f"[Assessment] Parsed {len(questions)} questions from LLM response")
+        except Exception as e:
+            print(f"[Assessment] ERROR: LLM question generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            questions = []
         
-        # Parse questions from response
-        questions = self._parse_questions_from_response(response, num_questions)
+        # Use fallback if LLM generation fails or returns too few questions
+        if len(questions) < num_questions:
+            fallback_count = num_questions - len(questions)
+            print(f"[Assessment] Generating {fallback_count} fallback questions")
+            questions.extend(self._generate_fallback_questions(fallback_count))
         
         return questions
     
@@ -211,7 +279,7 @@ def _generate_fallback_questions(self, num_questions: int) -> List[Dict[str, Any
         return questions[:expected_count]
     
     async def evaluate_assessment(self, assessment_id: str, user_answers: List[Dict[str, Any]], 
-                                 user_id: str) -> AssessmentResult:
+                                 user_id: str = None) -> AssessmentResult:
         """Evaluate user's assessment answers"""
         
         assessment = self.assessments.get(assessment_id)
@@ -289,34 +357,33 @@ def _generate_fallback_questions(self, num_questions: int) -> List[Dict[str, Any
             return user_response == correct_answer
     
     
-def _check_short_answer(self, user_answer: str, correct_answer: str) -> bool:
-    """Check short answer with better fuzzy matching"""
-    import re
-    
-    # Clean the text
-    user_clean = re.sub(r'[^\w\s]', '', user_answer.lower())
-    correct_clean = re.sub(r'[^\w\s]', '', correct_answer.lower())
-    
-    user_words = set(user_clean.split())
-    correct_words = set(correct_clean.split())
-    
-    # Remove common stop words
-    stop_words = {'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but'}
-    user_words = user_words - stop_words
-    correct_words = correct_words - stop_words
-    
-    if not correct_words:  # Avoid division by zero
-        return False
-    
-    # Calculate overlap
-    overlap = len(user_words.intersection(correct_words))
-    similarity = overlap / len(correct_words)
-    
-    # Consider correct if at least 60% of key terms are present
-    return similarity >= 0.6
-    
+    def _check_short_answer(self, user_answer: str, correct_answer: str) -> bool:
+        """Check short answer with better fuzzy matching"""
+        import re
+        
+        # Clean the text
+        user_clean = re.sub(r'[^\w\s]', '', user_answer.lower())
+        correct_clean = re.sub(r'[^\w\s]', '', correct_answer.lower())
+        user_words = set(user_clean.split())
+        correct_words = set(correct_clean.split())
+        
+        # Remove common stop words
+        stop_words = {'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'but'}
+        user_words = user_words - stop_words
+        correct_words = correct_words - stop_words
+        
+        if not correct_words:  # Avoid division by zero
+            return False
+        
+        # Calculate overlap
+        overlap = len(user_words.intersection(correct_words))
+        similarity = overlap / len(correct_words)
+        
+        # Consider correct if at least 60% of key terms are present
+        return similarity >= 0.6
+        
     async def _generate_feedback(self, detailed_answers: List[Dict[str, Any]], 
-                                percentage: float) -> List[str]:
+                                    percentage: float) -> List[str]:
         """Generate feedback for assessment"""
         
         correct_count = sum(1 for answer in detailed_answers if answer["is_correct"])

@@ -132,6 +132,7 @@ class GeneratedLessonResponse(BaseModel):
 
 class CreateAssessmentRequest(BaseModel):
     lesson_id: str
+    course_id: Optional[str] = None
     num_questions: int = 5
     difficulty: str = "medium"
 
@@ -185,7 +186,8 @@ class ProgressTrackingRequest(BaseModel):
     data: Dict[str, Any]
 
 class ProgressResponse(BaseModel):
-    progress: float
+    progress: float  # 0.0 to 1.0 representing percentage
+    progress_details: Optional[Dict[str, Any]] = None
     plan_status: str
     recommendations: List[Dict[str, Any]]
 
@@ -298,42 +300,80 @@ async def generate_lesson(request: GenerateLessonRequest):
 async def create_assessment(request: CreateAssessmentRequest):
     """Create an assessment for a lesson"""
     try:
-        if not tutoring_system:
-            # Return mock assessment if AI system not available
-            print("AI system not available, returning mock assessment")
-            return AssessmentResponse(
-                assessment_id=f"mock_assessment_{request.lesson_id}_{int(datetime.now().timestamp())}",
-                questions=[
-                    {
-                        "id": "q1",
-                        "question": "What is the main concept covered in this lesson?",
-                        "type": "multiple_choice",
-                        "options": ["Concept A", "Concept B", "Concept C", "Concept D"],
-                        "correct_answer": "Concept A",
-                        "explanation": "This was the primary focus of the lesson material."
-                    }
-                ],
-                time_limit=30,
-                passing_score=0.7
-            )
-        
         assessment_id = f"assessment_{request.lesson_id}_{datetime.now().timestamp()}"
-
-        # Generate questions based on difficulty and lesson
-        questions = await tutoring_system._generate_assessment_questions(
-            request.lesson_id,
-            request.difficulty,
-            request.num_questions
-        )
+        
+        # Generate questions
+        questions = []
+        if tutoring_system:
+            try:
+                print(f"[Routes] Creating assessment for lesson: {request.lesson_id}")
+                questions = await tutoring_system._generate_assessment_questions(
+                    request.lesson_id,
+                    request.difficulty,
+                    request.num_questions
+                )
+                print(f"[Routes] Generated {len(questions)} questions")
+            except Exception as e:
+                print(f"[Routes] ERROR: Failed to generate questions: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Fallback questions if generation failed or not available
+        if not questions:
+            print(f"[Routes] No questions generated, using fallback")
+            questions = [
+                {
+                    "question_id": "q1",
+                    "question_text": "What is the main concept covered in this lesson?",
+                    "question_type": "multiple_choice",
+                    "options": ["Concept A", "Concept B", "Concept C", "Concept D"],
+                    "correct_answer": "Concept A",
+                    "explanation": "The primary focus of the lesson material.",
+                    "difficulty": 2,
+                    "points": 1,
+                    "tags": ["core"]
+                }
+            ]
+        
+        # Normalize question field names for response
+        normalized_questions = []
+        for q in questions:
+            normalized_questions.append({
+                "id": q.get("id") or q.get("question_id"),
+                "question": q.get("question") or q.get("question_text"),
+                "type": q.get("type") or q.get("question_type"),
+                "options": q.get("options", []),
+                "correct_answer": q.get("correct_answer", ""),
+                "explanation": q.get("explanation", ""),
+                "difficulty": q.get("difficulty", 2),
+                "points": q.get("points", 1)
+            })
+        
+        # Store assessment in Supabase for later retrieval
+        try:
+            if supabase:
+                supabase.table("assessments").insert({
+                    "assessment_id": assessment_id,
+                    "course_id": request.course_id,
+                    "lesson_id": request.lesson_id,
+                    "questions": normalized_questions,
+                    "difficulty": request.difficulty,
+                    "created_at": datetime.now().isoformat()
+                }).execute()
+                print(f"[Routes] Assessment stored in Supabase: {assessment_id}")
+        except Exception as db_err:
+            print(f"[Routes] WARNING: Could not store assessment in Supabase: {db_err}")
         
         return AssessmentResponse(
             assessment_id=assessment_id,
-            questions=questions,
+            questions=normalized_questions,
             time_limit=30,  # minutes
             passing_score=0.7
         )
     except Exception as e:
-        print(f"Error creating assessment: {e}")
+        print(f"[Routes] ERROR in create_assessment: {e}")
+        import traceback
+        traceback.print_exc()
         # Return fallback assessment
         return AssessmentResponse(
             assessment_id=f"fallback_assessment_{request.lesson_id}",
@@ -354,11 +394,42 @@ async def create_assessment(request: CreateAssessmentRequest):
 async def evaluate_assessment(request: EvaluateAssessmentRequest):
     """Evaluate assessment and provide gap analysis"""
     try:
-        if not tutoring_system:
-            # Return mock evaluation if AI system not available
-            print("AI system not available, returning mock evaluation")
-            total_questions = len(request.user_answers)
-            score = 0.8  # Mock 80% score
+        # Retrieve assessment from Supabase
+        assessment_data = None
+        try:
+            if supabase:
+                resp = supabase.table("assessments")\
+                    .select("*")\
+                    .eq("assessment_id", request.assessment_id)\
+                    .execute()
+                if resp.data and len(resp.data) > 0:
+                    assessment_data = resp.data[0]
+        except Exception as db_err:
+            print(f"Warning: Could not retrieve assessment from Supabase: {db_err}")
+        
+        # If we have assessment data, use it for evaluation
+        if assessment_data:
+            questions = assessment_data.get("questions", [])
+            
+            # Calculate score from answers
+            score = 0.0
+            if questions and request.user_answers:
+                correct_count = 0
+                for i, question in enumerate(questions):
+                    if i < len(request.user_answers):
+                        user_answer = request.user_answers[i]
+                        correct_answer = question.get("correct_answer", "")
+                        # Simple exact match for now
+                        if isinstance(user_answer, dict):
+                            user_ans = user_answer.get("answer", "")
+                        else:
+                            user_ans = str(user_answer)
+                        
+                        if user_ans.lower().strip() == correct_answer.lower().strip():
+                            correct_count += 1
+                
+                score = correct_count / len(questions) if questions else 0.0
+            
             passed = score >= 0.7
             
             return EvaluateAssessmentResponse(
@@ -366,45 +437,88 @@ async def evaluate_assessment(request: EvaluateAssessmentRequest):
                 passed=passed,
                 gaps=[] if passed else [
                     {
-                        "concept": "Core Principles",
+                        "concept": "Core Concepts",
                         "severity": "medium",
-                        "description": "Need better understanding of fundamental concepts",
+                        "description": f"Score: {score*100:.1f}%. Need to review key concepts.",
                         "remedial_suggestions": [
-                            "Review the introductory materials",
-                            "Practice with additional examples"
+                            "Review the lesson content again",
+                            "Focus on highlighted key concepts",
+                            "Practice with more examples"
                         ]
                     }
                 ],
                 remedial_content={
                     "title": "Review Materials",
-                    "content": "Please review the core concepts section.",
+                    "content": "Please review the lesson content to strengthen your understanding.",
                     "resources": ["Lesson slides", "Practice exercises"]
                 },
-                next_steps=["Proceed to next lesson"] if passed else ["Review materials and retry"]
+                next_steps=["Proceed to next lesson"] if passed else ["Review and retry assessment"]
             )
         
-        # This would integrate with gap_analysis.py and assessment_system.py
-        score, passed = await tutoring_system._evaluate_assessment(
-            request.assessment_id,
-            request.user_answers
-        )
+        # Fallback if no assessment found and tutoring_system not available
+        if not tutoring_system:
+            print("Warning: Assessment not found and tutoring system not available")
+            total_questions = len(request.user_answers) if request.user_answers else 0
+            score = 0.75  # Default score
+            passed = score >= 0.7
+            
+            return EvaluateAssessmentResponse(
+                score=score,
+                passed=passed,
+                gaps=[],
+                remedial_content={
+                    "title": "Continue Learning",
+                    "content": "You can proceed with the course.",
+                    "resources": []
+                },
+                next_steps=["Proceed to next lesson"]
+            )
         
-        # Get gap analysis
-        gaps = await tutoring_system._analyze_learning_gaps(
-            request.user_id,
-            request.assessment_id,
-            request.user_answers
-        )
+        # Use tutoring_system for evaluation if available
+        try:
+            score, passed = await tutoring_system._evaluate_assessment(
+                request.assessment_id,
+                request.user_answers
+            )
+        except Exception as ts_err:
+            print(f"Warning: Tutoring system evaluation failed: {ts_err}, using fallback")
+            score = 0.75
+            passed = True
+        
+        # Get gap analysis if available
+        gaps = []
+        try:
+            if tutoring_system:
+                gaps = await tutoring_system._analyze_learning_gaps(
+                    request.user_id,
+                    request.assessment_id,
+                    request.user_answers
+                )
+        except Exception as gap_err:
+            print(f"Warning: Gap analysis failed: {gap_err}")
         
         # Get remedial content
-        remedial_content = await tutoring_system._generate_remedial_content(gaps)
+        remedial_content = {
+            "title": "Review Materials",
+            "content": "Review the lesson to improve your understanding.",
+            "resources": []
+        }
+        try:
+            if tutoring_system and gaps:
+                remedial_content = await tutoring_system._generate_remedial_content(gaps)
+        except Exception as rem_err:
+            print(f"Warning: Remedial content generation failed: {rem_err}")
         
-        # Get next steps recommendations
-        next_steps = await tutoring_system._get_next_steps_recommendations(
-            request.user_id,
-            score,
-            gaps
-        )
+        next_steps = ["Proceed to next lesson"] if passed else ["Review and retry"]
+        try:
+            if tutoring_system:
+                next_steps = await tutoring_system._get_next_steps_recommendations(
+                    request.user_id,
+                    score,
+                    gaps
+                )
+        except Exception as next_err:
+            print(f"Warning: Next steps recommendation failed: {next_err}")
         
         return EvaluateAssessmentResponse(
             score=score,
@@ -417,12 +531,12 @@ async def evaluate_assessment(request: EvaluateAssessmentRequest):
         print(f"Error evaluating assessment: {e}")
         # Return fallback evaluation
         return EvaluateAssessmentResponse(
-            score=0.7,
+            score=0.75,
             passed=True,
             gaps=[],
             remedial_content={
-                "title": "General Review",
-                "content": "Continue with your learning path.",
+                "title": "Continue Learning",
+                "content": "You can proceed with the course.",
                 "resources": []
             },
             next_steps=["Proceed to next lesson"]
@@ -451,11 +565,18 @@ async def create_learning_plan(request: CreateLearningPlanRequest):
         raise HTTPException(status_code=500, detail=str(e))
 @router.post("/create-course", response_model=CourseResponse)
 async def create_course(request: CreateCourseRequest):
-    """Create a dynamic course based on user requirements"""
+    """Create a dynamic course based on user requirements.
+
+    NOTE: For reliability we currently route ALL generation through
+    `InteractiveCourseCreator` / `EnhancedTutoringSystem` and bypass the
+    LangGraph-based `LangGraphCourseCreator`. This avoids cases where
+    Gemini returns non‑JSON output and the system silently falls back to a
+    single generic intro lesson (e.g. "Introduction to ML").
+    """
     try:
-        if not course_creator and not lg_course_creator:
+        if not course_creator:
             raise HTTPException(status_code=503, detail="Course Creator not available")
-        
+
         # Create user profile from request
         user_profile = UserProfile(
             user_id=request.user_id,
@@ -467,116 +588,49 @@ async def create_course(request: CreateCourseRequest):
             learning_goals=request.user_profile.get("learning_goals", ["Master the subject"]),
             interests=request.user_profile.get("interests", [])
         )
-        
-        # Calculate expected lesson count
-        expected_lesson_count = request.weeks * 3
-        
-        # Try LangGraph-based generation first 
-        if lg_course_creator is not None:
-            from uuid import uuid4
-            goal = f"Learn {request.subject} focusing on {request.topic} with a {request.focus} approach."
-            lg = await lg_course_creator.create_course(
-                subject=request.subject,
-                topic=request.topic,
-                weeks=request.weeks,
-                focus=request.focus,
-                user_profile=user_profile.dict(),
-                goal=goal,
-            )
-            path_id = str(uuid4())
-            curriculum = lg.get("curriculum", [])
-            learning_path = lg.get("learning_path", {})
-            
-            # ✅ FIXED: Validate curriculum has enough lessons before returning
-            if len(curriculum) < expected_lesson_count:
-                print(f"❌ Curriculum validation failed: Expected {expected_lesson_count} lessons, got {len(curriculum)}")
-                # Fall back to interactive course creator if available
-                if course_creator:
-                    print("🔄 Falling back to InteractiveCourseCreator due to insufficient lessons")
-                    if not course_creator.system:
-                        await course_creator.initialize_system()
-                    curriculum_lessons = await course_creator.system.create_dynamic_curriculum(
-                        subject=request.subject,
-                        level=user_profile.preferred_difficulty,
-                        duration_weeks=request.weeks,
-                        user_profile=user_profile
-                    )
-                    path_id = await course_creator.system.create_personalized_learning_path(
-                        user_id=request.user_id,
-                        user_request=f"Learn {request.subject} focusing on {request.topic} with {request.focus} approach",
-                        user_profile=user_profile
-                    )
-                    learning_path_obj = course_creator.system.learning_paths.get(path_id, {})
-                    
-                    # Convert to curriculum format
-                    curriculum = [{
-                        "id": lesson.lesson_id,
-                        "title": lesson.title,
-                        "difficulty": lesson.difficulty,
-                        "duration": lesson.duration,
-                        "content": lesson.content[:200] + "..." if len(lesson.content) > 200 else lesson.content,
-                        "learning_objectives": lesson.learning_objectives,
-                        "prerequisites": lesson.prerequisites
-                    } for lesson in curriculum_lessons]
-                    
-                    learning_path = {
-                        "path_id": path_id,
-                        "title": learning_path_obj.get("title", f"{request.subject} Course"),
-                        "description": learning_path_obj.get("description", ""),
-                        "estimated_duration": learning_path_obj.get("estimated_duration", 0),
-                        "difficulty_progression": learning_path_obj.get("difficulty_progression", []),
-                        "milestones": learning_path_obj.get("milestones", [])
-                    }
-                else:
-                    # If no fallback available, at least log the issue but return what we have
-                    print(f"⚠️ No fallback available, returning incomplete curriculum with {len(curriculum)} lessons")
-            
-            return CourseResponse(
-                course_id=path_id,
-                curriculum=curriculum,
-                learning_path={
-                    "path_id": path_id,
-                    **learning_path,
-                },
-                requirements={
-                    "subject": request.subject,
-                    "topic": request.topic,
-                    "weeks": request.weeks,
-                    "focus": request.focus,
-                    "assessments": request.assessments,
-                },
-            )
 
-        # Fallback to existing interactive system
+        # Expected lesson count for sanity‑checking downstream
+        expected_lesson_count = request.weeks * 3
+
+        # Always use InteractiveCourseCreator / EnhancedTutoringSystem for now
         if not course_creator.system:
             await course_creator.initialize_system()
+
         curriculum = await course_creator.system.create_dynamic_curriculum(
             subject=request.subject,
             level=user_profile.preferred_difficulty,
             duration_weeks=request.weeks,
-            user_profile=user_profile
+            user_profile=user_profile,
         )
+
         path_id = await course_creator.system.create_personalized_learning_path(
             user_id=request.user_id,
             user_request=f"Learn {request.subject} focusing on {request.topic} with {request.focus} approach",
-            user_profile=user_profile
+            user_profile=user_profile,
         )
+
         learning_path = course_creator.system.learning_paths.get(path_id, {})
-        
-        # ✅ FIXED: Also validate interactive course creator output
-        curriculum_list = [{
-            "id": lesson.lesson_id,
-            "title": lesson.title,
-            "difficulty": lesson.difficulty,
-            "duration": lesson.duration,
-            "content": lesson.content[:200] + "..." if len(lesson.content) > 200 else lesson.content,
-            "learning_objectives": lesson.learning_objectives,
-            "prerequisites": lesson.prerequisites
-        } for lesson in curriculum]
-        
+
+        # Normalize lessons into the API shape expected by the frontend
+        curriculum_list = [
+            {
+                "id": lesson.lesson_id,
+                "title": lesson.title,
+                "difficulty": lesson.difficulty,
+                "duration": lesson.duration,
+                "content": lesson.content[:200] + "..." if len(lesson.content) > 200 else lesson.content,
+                "learning_objectives": lesson.learning_objectives,
+                "prerequisites": lesson.prerequisites,
+            }
+            for lesson in curriculum
+        ]
+
         if len(curriculum_list) < expected_lesson_count:
-            print(f"⚠️ Interactive course creator generated insufficient lessons: {len(curriculum_list)} instead of {expected_lesson_count}")
-        
+            print(
+                f"⚠️ Interactive course creator generated {len(curriculum_list)} "
+                f"lessons instead of expected {expected_lesson_count}"
+            )
+
         return CourseResponse(
             course_id=path_id,
             curriculum=curriculum_list,
@@ -586,15 +640,15 @@ async def create_course(request: CreateCourseRequest):
                 "description": learning_path.get("description", ""),
                 "estimated_duration": learning_path.get("estimated_duration", 0),
                 "difficulty_progression": learning_path.get("difficulty_progression", []),
-                "milestones": learning_path.get("milestones", [])
+                "milestones": learning_path.get("milestones", []),
             },
             requirements={
                 "subject": request.subject,
                 "topic": request.topic,
                 "weeks": request.weeks,
                 "focus": request.focus,
-                "assessments": request.assessments
-            }
+                "assessments": request.assessments,
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -605,14 +659,24 @@ async def create_course(request: CreateCourseRequest):
 async def track_progress(request: ProgressTrackingRequest):
     """Track user progress and get recommendations"""
     try:
-        if not learning_planner:  # ✅ FIXED: Check learning_planner, not track_progress
-            raise HTTPException(status_code=503, detail="Learning planner not available")
+        progress_data = {"current_lesson": 0, "completed_lessons": 0, "total_lessons": 0}
+        plan_status = "active"
+        recommendations = []
         
-        result = await learning_planner.track_progress(
-            request.user_id,
-            request.activity,
-            request.data
-        )
+        # Try using learning_planner if available
+        if learning_planner:
+            try:
+                result = await learning_planner.track_progress(
+                    request.user_id,
+                    request.activity,
+                    request.data
+                )
+                progress_data = result.get("progress", progress_data)
+                plan_status = result.get("plan_status", plan_status)
+                recommendations = result.get("recommendations", recommendations)
+            except Exception as lp_err:
+                print(f"Warning: Learning planner track_progress failed: {lp_err}")
+        
         # Persist lesson completion to Supabase when applicable
         try:
             if supabase and request.activity == "lesson_completed":
@@ -620,7 +684,7 @@ async def track_progress(request: ProgressTrackingRequest):
                 lesson_id = request.data.get("lesson_id") or request.data.get("node_id")
                 if course_id and lesson_id and request.user_id:
                     resp = supabase.table("generated_courses")\
-                        .select("id,curriculum")\
+                        .select("id,curriculum,progress")\
                         .eq("id", course_id)\
                         .eq("user_id", request.user_id)\
                         .execute()
@@ -634,10 +698,16 @@ async def track_progress(request: ProgressTrackingRequest):
                                 l["completed"] = True
                                 updated = True
                                 break
+                        
                         if updated:
+                            completed_count = sum(1 for l in curriculum if isinstance(l, dict) and l.get("completed"))
+                            progress_data["completed_lessons"] = completed_count
+                            progress_data["total_lessons"] = len(curriculum)
+                            
                             supabase.table("generated_courses")\
                                 .update({
                                     "curriculum": curriculum,
+                                    "progress": progress_data,
                                     "updated_at": datetime.now().isoformat()
                                 })\
                                 .eq("id", course_id)\
@@ -646,12 +716,19 @@ async def track_progress(request: ProgressTrackingRequest):
         except Exception as db_err:
             print(f"Warning: Failed to update lesson completion: {db_err}")
 
+        # Calculate progress percentage
+        progress_percentage = 0.0
+        if progress_data.get("total_lessons", 0) > 0:
+            progress_percentage = progress_data.get("completed_lessons", 0) / progress_data.get("total_lessons", 1)
+
         return ProgressResponse(
-            progress=result["progress"],
-            plan_status=result["plan_status"],
-            recommendations=result["recommendations"]
+            progress=progress_percentage,
+            progress_details=progress_data,
+            plan_status=plan_status,
+            recommendations=recommendations
         )
     except Exception as e:
+        print(f"Error in track_progress: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ✅ FIXED: start-learning-session endpoint - removed incorrect condition
@@ -953,50 +1030,29 @@ async def continue_learning(request: ContinueLearningRequest):
             interests=[]
         )
         
-        # Generate course using available course creators
-        course_id = str(uuid4())
-        curriculum = []
-        learning_path_data = {}
-        
-        # Try LangGraphCourseCreator first
-        if lg_course_creator is not None:
-            goal = f"Learn {subject} focusing on {topic} with a {focus_type} approach."
-            try:
-                print("Using LangGraphCourseCreator for course generation...")
-                lg = await lg_course_creator.create_course(
-                    subject=subject,
-                    topic=topic,
-                    weeks=weeks,
-                    focus=focus_type,
-                    user_profile=user_profile.dict(),
-                    goal=goal,
-                )
-                curriculum = lg.get("curriculum", [])
-                learning_path_data = lg.get("learning_path", {})
-                print(f"LangGraph generated {len(curriculum)} lessons")
-            except Exception as e:
-                print(f"LangGraph course creation failed: {e}, falling back to InteractiveCourseCreator")
-        
-        # Fallback to InteractiveCourseCreator
-        if not curriculum:
-            if not course_creator:
-                raise HTTPException(
-                    status_code=503, 
-                    detail="Course creator not available. Please ensure GOOGLE_API_KEY is set in environment variables."
-                )
-            if not course_creator.system:
-                await course_creator.initialize_system()
-            
-            print("Using InteractiveCourseCreator for course generation...")
-            curriculum_lessons = await course_creator.system.create_dynamic_curriculum(
-                subject=subject,
-                level=difficulty,
-                duration_weeks=weeks,
-                user_profile=user_profile
+        # Generate course using InteractiveCourseCreator / EnhancedTutoringSystem only
+        # (we bypass LangGraphCourseCreator here for reliability to avoid generic
+        # fallback courses when Gemini JSON parsing fails.)
+        if not course_creator:
+            raise HTTPException(
+                status_code=503,
+                detail="Course creator not available. Please ensure GOOGLE_API_KEY is set in environment variables.",
             )
-            
-            # Convert lessons to dict format
-            curriculum = [{
+
+        if not course_creator.system:
+            await course_creator.initialize_system()
+
+        print("Using InteractiveCourseCreator for continue-learning course generation...")
+        curriculum_lessons = await course_creator.system.create_dynamic_curriculum(
+            subject=subject,
+            level=difficulty,
+            duration_weeks=weeks,
+            user_profile=user_profile,
+        )
+
+        # Convert lessons to dict format
+        curriculum = [
+            {
                 "id": lesson.lesson_id,
                 "title": lesson.title,
                 "difficulty": lesson.difficulty,
@@ -1004,35 +1060,39 @@ async def continue_learning(request: ContinueLearningRequest):
                 "content": lesson.content,
                 "learning_objectives": lesson.learning_objectives,
                 "prerequisites": lesson.prerequisites,
-                "assessment_questions": lesson.assessment_questions if hasattr(lesson, 'assessment_questions') else [],
-                "practice_exercises": lesson.practice_exercises if hasattr(lesson, 'practice_exercises') else []
-            } for lesson in curriculum_lessons]
-            
-            # Create learning path
-            path_id = await course_creator.system.create_personalized_learning_path(
-                user_id=request.user_id,
-                user_request=f"Learn {subject} focusing on {topic} with {focus_type} approach",
-                user_profile=user_profile
-            )
-            
-            # Get learning path data
-            learning_path_obj = course_creator.system.learning_paths.get(path_id)
-            if learning_path_obj:
-                if hasattr(learning_path_obj, 'model_dump'):
-                    learning_path_data = learning_path_obj.model_dump()
-                elif hasattr(learning_path_obj, 'dict'):
-                    learning_path_data = learning_path_obj.dict()
-                else:
-                    learning_path_data = {
-                        "title": getattr(learning_path_obj, 'title', f"{subject} Course"),
-                        "description": getattr(learning_path_obj, 'description', ""),
-                        "estimated_duration": getattr(learning_path_obj, 'estimated_duration', weeks * 7 * 60),
-                        "difficulty_progression": getattr(learning_path_obj, 'difficulty_progression', []),
-                        "milestones": getattr(learning_path_obj, 'milestones', [])
-                    }
-            course_id = path_id
-        
-        print(f"Course generation completed with {len(curriculum)} lessons")
+                "assessment_questions": getattr(lesson, "assessment_questions", []),
+                "practice_exercises": getattr(lesson, "practice_exercises", []),
+            }
+            for lesson in curriculum_lessons
+        ]
+
+        # Create learning path
+        path_id = await course_creator.system.create_personalized_learning_path(
+            user_id=request.user_id,
+            user_request=f"Learn {subject} focusing on {topic} with {focus_type} approach",
+            user_profile=user_profile,
+        )
+
+        # Get learning path data
+        learning_path_obj = course_creator.system.learning_paths.get(path_id)
+        if learning_path_obj:
+            if hasattr(learning_path_obj, "model_dump"):
+                learning_path_data = learning_path_obj.model_dump()
+            elif hasattr(learning_path_obj, "dict"):
+                learning_path_data = learning_path_obj.dict()
+            else:
+                learning_path_data = {
+                    "title": getattr(learning_path_obj, "title", f"{subject} Course"),
+                    "description": getattr(learning_path_obj, "description", ""),
+                    "estimated_duration": getattr(learning_path_obj, "estimated_duration", weeks * 7 * 60),
+                    "difficulty_progression": getattr(learning_path_obj, "difficulty_progression", []),
+                    "milestones": getattr(learning_path_obj, "milestones", []),
+                }
+
+        # Use learning-path ID as course_id for consistency with other endpoints
+        course_id = path_id
+
+        print(f"Interactive course generation for continue-learning completed with {len(curriculum)} lessons")
         
         # Prepare course metadata
         course_metadata = {
@@ -1292,51 +1352,3 @@ class TrackProgressRequest(BaseModel):
     activity: str  # "lesson_completed", "assessment_taken", etc.
     data: Dict[str, Any]
 
-@router.post("/track-progress")
-async def track_progress(request: TrackProgressRequest):
-    """Track user progress and update database"""
-    try:
-        if request.activity == "lesson_completed":
-            lesson_id = request.data.get("lesson_id")
-            
-            # Update generated_courses progress
-            result = supabase.table("generated_courses")\
-                .select("progress, curriculum")\
-                .eq("user_id", request.user_id)\
-                .execute()
-            
-            if result.data and len(result.data) > 0:
-                course = result.data[0]
-                current_progress = course.get("progress", {})
-                curriculum = course.get("curriculum", [])
-                
-                # Increment completed lessons
-                completed = current_progress.get("completed_lessons", 0) + 1
-                total = len(curriculum)
-                progress_percent = (completed / total * 100) if total > 0 else 0
-                
-                # Update database
-                supabase.table("generated_courses")\
-                    .update({
-                        "progress": {
-                            "completed_lessons": completed,
-                            "total_lessons": total,
-                            "progress_percent": progress_percent,
-                            "current_lesson": completed + 1
-                        },
-                        "updated_at": datetime.now().isoformat()
-                    })\
-                    .eq("user_id", request.user_id)\
-                    .execute()
-                
-                return {
-                    "success": True,
-                    "progress": {
-                        "completed_lessons": completed,
-                        "progress_percent": progress_percent
-                    }
-                }
-        
-        return {"success": True, "message": "Progress tracked"}
-    except Exception as e:
-        raise HTTPException(500, str(e))

@@ -9,6 +9,8 @@ and continuously tracks progress to adapt the learning path.
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
+import os
+from dotenv import load_dotenv
 from new_agent.tutoring_system import MultiAgentTutoringSystem, SystemConfig
 from new_agent.models import Lesson, UserProgress, LearningPath
 from new_agent.dynamic_lesson_generator import DynamicLessonGenerator
@@ -18,9 +20,14 @@ class DynamicLearningPlanner:
     
     def __init__(self):
         # Initialize system
+        load_dotenv()
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY must be set for DynamicLearningPlanner")
+
         config = SystemConfig(
             llm_provider="google",
-            llm_api_key="AIzaSyCKe9J2cwEzVnsp-MNU-xJxf255_hWAVzE",
+            llm_api_key=api_key,
             llm_model="gemini-pro",
             enable_analytics=True,
             enable_gap_analysis=True,
