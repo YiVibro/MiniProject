@@ -44,8 +44,20 @@ class RealLLMService(BaseLLMService):
     async def generate_response(self, prompt: str, **kwargs) -> str:
         """Generate response using actual Google Gemini API"""
         try:
+            # Prepare generation config (e.g., response_mime_type)
+            generation_config = kwargs.get("generation_config", {})
+            if "response_mime_type" in kwargs:
+                generation_config["response_mime_type"] = kwargs["response_mime_type"]
+
             # Make actual API call
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            if generation_config:
+                response = await asyncio.to_thread(
+                    self.model.generate_content,
+                    prompt,
+                    generation_config=generation_config,
+                )
+            else:
+                response = await asyncio.to_thread(self.model.generate_content, prompt)
             
             # Extract text from response
             if hasattr(response, 'text'):

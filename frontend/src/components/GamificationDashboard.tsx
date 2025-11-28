@@ -5,6 +5,7 @@ import { XPProgressBar } from "./XPProgressBar";
 import { LevelBadge } from "./LevelBadge";
 import { AchievementShowcase } from "./AchievementShowcase";
 import { DailyChallenges } from "./DailyChallenges";
+import { BadgesGallery } from "./BadgesGallery";
 import { Leaderboard } from "./Leaderboard";
 import { Loader2 } from "lucide-react";
 
@@ -47,6 +48,7 @@ export const GamificationDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <AchievementShowcase />
+          <BadgesGallery />
           <DailyChallenges />
         </div>
         <div className="space-y-6">

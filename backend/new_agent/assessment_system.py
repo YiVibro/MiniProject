@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import json
 import uuid
+import re
 from pydantic import BaseModel, Field
 from .models import Assessment, TestResult, UserProgress, Lesson
 
@@ -193,26 +194,29 @@ class AssessmentSystem:
         """Generate questions using LLM"""
         
         prompt = f"""
-        Create {num_questions} {difficulty} level assessment questions for lesson {lesson_id}.
+        You are generating assessment questions for a lesson. Return ONLY a valid JSON array with exactly {num_questions} items. No extra text.
         
+        Each item must be an object with these fields:
+        - question_text: string
+        - question_type: one of "multiple_choice", "short_answer", "true_false"
+        - options: array of strings (required only for multiple_choice; omit or empty for others)
+        - correct_answer: string
+        - explanation: string
+        - difficulty: integer from 1 to 5
+        - points: integer from 1 to 5
+        - tags: array of strings
+        
+        Lesson ID: {lesson_id}
+        Difficulty: {difficulty}
         Question types to include: {', '.join(question_types)}
-        
-        For each question, provide:
-        1. Question text
-        2. Question type
-        3. Options (for multiple choice)
-        4. Correct answer
-        5. Explanation
-        6. Difficulty level (1-5)
-        7. Points (1-5)
-        8. Tags (topics covered)
-        
-        Format as structured questions that can be used for assessment.
         """
         
         try:
             print(f"[Assessment] Attempting to generate {num_questions} {difficulty} questions for lesson {lesson_id}")
-            response = await self.llm_service.generate_response(prompt)
+            response = await self.llm_service.generate_response(
+                prompt,
+                response_mime_type="application/json"
+            )
             print(f"[Assessment] LLM response received: {len(response)} characters")
             questions = self._parse_questions_from_response(response, num_questions)
             print(f"[Assessment] Parsed {len(questions)} questions from LLM response")
@@ -231,52 +235,281 @@ class AssessmentSystem:
         return questions
     
     def _parse_questions_from_response(self, response: str, expected_count: int) -> List[Dict[str, Any]]:
-        """Parse questions from LLM response"""
-        questions = []
-        lines = response.split('\n')
-        current_question = None
+        """Parse questions from LLM response with robust JSON-first strategy and heuristic fallback"""
         
-        for line in lines:
-            line = line.strip()
-            if line.startswith(('1.', '2.', '3.', '4.', '5.')) or line.startswith('Question'):
+        def normalize_question(item: Dict[str, Any]) -> Dict[str, Any]:
+            qt = (
+                item.get("question_text")
+                or item.get("question")
+                or item.get("text")
+                or item.get("prompt")
+                or ""
+            )
+            options_raw = item.get("options") or item.get("choices") or []
+            options: List[str] = []
+            for opt in options_raw:
+                if isinstance(opt, dict):
+                    val = opt.get("text") or opt.get("label") or opt.get("value") or str(opt)
+                else:
+                    val = str(opt)
+                options.append(val)
+            qtype = (
+                item.get("question_type")
+                or item.get("type")
+                or ("multiple_choice" if options else "short_answer")
+            )
+            correct = (
+                item.get("correct_answer")
+                or item.get("answer")
+                or item.get("correct")
+                or ""
+            )
+            explanation = item.get("explanation") or item.get("rationale") or ""
+            difficulty = item.get("difficulty", 3)
+            if isinstance(difficulty, str):
+                mapping = {"easy": 1, "medium": 3, "hard": 5}
+                difficulty = mapping.get(difficulty.lower().strip(), 3)
+            try:
+                difficulty = int(difficulty)
+            except Exception:
+                difficulty = 3
+            points = item.get("points", 1)
+            try:
+                points = int(points)
+            except Exception:
+                points = 1
+            tags = item.get("tags") or item.get("topics") or []
+            if not isinstance(tags, list):
+                tags = [str(tags)]
+            return {
+                "question_id": str(uuid.uuid4()),
+                "question_text": str(qt).strip(),
+                "question_type": str(qtype).strip(),
+                "options": options,
+                "correct_answer": str(correct).strip(),
+                "explanation": str(explanation).strip(),
+                "difficulty": max(1, min(5, difficulty)),
+                "points": max(1, min(5, points)),
+                "tags": [str(t) for t in tags],
+            }
+
+        # 1) Try direct JSON parsing
+        parsed: List[Dict[str, Any]] = []
+        try:
+            data = json.loads(response)
+            if isinstance(data, dict):
+                # Common keys where the array may live
+                for key in ("questions", "items", "data", "quiz", "assessment"):
+                    if key in data and isinstance(data[key], list):
+                        data = data[key]
+                        break
+                # If still a dict, try interpreting as dict-of-questions
+                if isinstance(data, dict):
+                    values = list(data.values())
+                    if values and all(isinstance(v, (dict, list)) for v in values):
+                        # Flatten lists if needed and take first expected_count
+                        flattened: List[Dict[str, Any]] = []
+                        for v in values:
+                            if isinstance(v, list):
+                                flattened.extend(v)
+                            else:
+                                flattened.append(v)
+                        data = flattened
+            if isinstance(data, list):
+                parsed = [normalize_question(item) for item in data[:expected_count]]
+        except Exception:
+            data = None
+
+        # 2) Try extracting fenced JSON code block
+        if not parsed:
+            try:
+                # Try language-tagged json/jsonc first
+                match = re.search(r"```(?:json|jsonc)\s*(\[.*?\])\s*```", response, re.IGNORECASE | re.DOTALL)
+                blocks = []
+                if match:
+                    blocks.append(match.group(1))
+                else:
+                    # Fallback: any fenced block, then try to parse an array from it
+                    for m in re.finditer(r"```[a-zA-Z0-9_-]*\s*([\s\S]*?)\s*```", response, re.DOTALL):
+                        blocks.append(m.group(1))
+                for blk in blocks:
+                    # If the whole block is a JSON array
+                    try:
+                        cand = blk.strip()
+                        if cand:
+                            # Try direct
+                            cand_data = json.loads(cand)
+                            if isinstance(cand_data, list):
+                                parsed = [normalize_question(item) for item in cand_data[:expected_count]]
+                                break
+                    except Exception:
+                        pass
+                    # Try extracting the first array from the block
+                    try:
+                        s = blk.find("["); e = blk.rfind("]")
+                        if s != -1 and e != -1 and e > s:
+                            cand = blk[s:e+1]
+                            cand_data = json.loads(cand)
+                            if isinstance(cand_data, list):
+                                parsed = [normalize_question(item) for item in cand_data[:expected_count]]
+                                break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # 3) Try naive bracket slicing if a JSON array is embedded
+        if not parsed:
+            try:
+                start = response.find("[")
+                end = response.rfind("]")
+                if start != -1 and end != -1 and end > start:
+                    data = json.loads(response[start : end + 1])
+                    if isinstance(data, list):
+                        parsed = [normalize_question(item) for item in data[:expected_count]]
+            except Exception:
+                pass
+
+        if parsed:
+            return parsed[:expected_count]
+
+        # 4) Heuristic fallback: parse line-based formats
+        def _preprocess_text(text: str) -> str:
+            # Remove fenced code blocks markers
+            text = re.sub(r"```[a-zA-Z0-9_-]*\s*", "", text)
+            text = re.sub(r"\s*```\s*", "\n", text)
+            # Remove bold/italic/code markers while preserving content
+            text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+            text = re.sub(r"__(.*?)__", r"\1", text)
+            text = re.sub(r"`(.*?)`", r"\1", text)
+            # Normalize headings: drop leading #'s
+            text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.MULTILINE)
+            # Insert newlines before anchors when they appear inline
+            anchors = [
+                r"(Question\s*\d+)",
+                r"(Q\d+)",
+                r"(Answer:)",
+                r"(Correct\s*Answer:)",
+                r"(Explanation:)",
+                r"(Type:)",
+                r"(Difficulty:)",
+                r"(Points:)",
+            ]
+            for pat in anchors:
+                text = re.sub(rf"\s+{pat}", r"\n\1", text, flags=re.IGNORECASE)
+            # Put options on separate lines if inline
+            text = re.sub(r"\s+([A-Da-d][\).]\s+)", r"\n\1", text)
+            # Normalize line endings
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+            return text
+
+        raw_text = _preprocess_text(response)
+        questions: List[Dict[str, Any]] = []
+        lines = raw_text.split("\n")
+        current_question: Optional[Dict[str, Any]] = None
+
+        question_start_pattern = re.compile(r"^(?:#{1,6}\s*)?(?:Question\s*\d+\b|Q\d+\b|\d+[\.)])", re.IGNORECASE)
+        option_pattern = re.compile(r"^(?:[A-Da-d][\).]|[-*])\s+(.*)")
+        inline_options_pattern = re.compile(r"([A-Da-d][\).])\s+([^A-Da-d]+?)(?=(?:\s+[A-Da-d][\).]\s+|$))")
+
+        for raw in lines:
+            line = raw.strip()
+            if not line:
+                continue
+            if question_start_pattern.match(line):
                 if current_question:
                     questions.append(current_question)
-                
+                # Derive type if mentioned on the same line
+                qtype = "multiple_choice"
+                low = line.lower()
+                if "short answer" in low:
+                    qtype = "short_answer"
+                elif "true/false" in low or "true or false" in low:
+                    qtype = "true_false"
                 current_question = {
                     "question_id": str(uuid.uuid4()),
                     "question_text": line,
-                    "question_type": "multiple_choice",
+                    "question_type": qtype,
                     "options": [],
                     "correct_answer": "",
                     "explanation": "",
                     "difficulty": 3,
                     "points": 1,
-                    "tags": []
+                    "tags": [],
                 }
-            elif current_question and line:
-                if line.startswith(('A)', 'B)', 'C)', 'D)')):
-                    current_question["options"].append(line)
-                elif line.startswith("Answer:"):
-                    current_question["correct_answer"] = line.replace("Answer:", "").strip()
-                elif line.startswith("Explanation:"):
-                    current_question["explanation"] = line.replace("Explanation:", "").strip()
-                elif line.startswith("Type:"):
-                    current_question["question_type"] = line.replace("Type:", "").strip()
-                elif line.startswith("Difficulty:"):
+                continue
+
+            if current_question:
+                m = option_pattern.match(line)
+                if m:
+                    current_question["options"].append(m.group(1).strip())
+                    continue
+                # Extract inline options if present on the same line
+                for om in inline_options_pattern.finditer(line):
+                    opt_text = om.group(2).strip()
+                    if opt_text:
+                        current_question["options"].append(opt_text)
+                # Detect type lines like "Multiple Choice:" / "Short Answer:" / "True/False:"
+                low_line = line.lower()
+                if low_line.startswith("multiple choice:") or low_line.startswith("multiple-choice:"):
+                    current_question["question_type"] = "multiple_choice"
+                    # If line also contains the prompt after the label, capture it
+                    parts = line.split(":", 1)
+                    if len(parts) == 2 and parts[1].strip():
+                        current_question["question_text"] = parts[1].strip()
+                    continue
+                if low_line.startswith("short answer:"):
+                    current_question["question_type"] = "short_answer"
+                    parts = line.split(":", 1)
+                    if len(parts) == 2 and parts[1].strip():
+                        current_question["question_text"] = parts[1].strip()
+                    continue
+                if low_line.startswith("true/false:") or low_line.startswith("true or false:"):
+                    current_question["question_type"] = "true_false"
+                    parts = line.split(":", 1)
+                    if len(parts) == 2 and parts[1].strip():
+                        current_question["question_text"] = parts[1].strip()
+                    continue
+                if line.lower().startswith("answer:") or line.lower().startswith("correct answer:") or line.lower().startswith("correct:"):
+                    current_question["correct_answer"] = line.split(":", 1)[1].strip() if ":" in line else line
+                    continue
+                if line.lower().startswith("explanation:"):
+                    current_question["explanation"] = line.split(":", 1)[1].strip() if ":" in line else line
+                    continue
+                if line.lower().startswith("type:"):
+                    current_question["question_type"] = line.split(":", 1)[1].strip()
+                    continue
+                if line.lower().startswith("difficulty:"):
                     try:
-                        current_question["difficulty"] = int(line.replace("Difficulty:", "").strip())
-                    except ValueError:
+                        current_question["difficulty"] = int(line.split(":", 1)[1].strip())
+                    except Exception:
                         current_question["difficulty"] = 3
-                elif line.startswith("Points:"):
+                    continue
+                if line.lower().startswith("points:"):
                     try:
-                        current_question["points"] = int(line.replace("Points:", "").strip())
-                    except ValueError:
+                        current_question["points"] = int(line.split(":", 1)[1].strip())
+                    except Exception:
                         current_question["points"] = 1
-        
+                    continue
+                # If it's a plain line and current question text is just a heading, use this as the prompt
+                try:
+                    head = current_question["question_text"].strip().lower()
+                    if re.match(r"^(question\s*\d+\b|q\d+\b)$", head) and line:
+                        current_question["question_text"] = line
+                except Exception:
+                    pass
+
         if current_question:
             questions.append(current_question)
-        
-        return questions[:expected_count]
+
+        result = questions[:expected_count]
+        if not result:
+            try:
+                preview = response[:500].replace("\n", " ")
+                print(f"[Assessment] WARNING: Parser produced 0 questions. Response preview: {preview}")
+            except Exception:
+                pass
+        return result
     
     async def evaluate_assessment(self, assessment_id: str, user_answers: List[Dict[str, Any]], 
                                  user_id: str = None) -> AssessmentResult:

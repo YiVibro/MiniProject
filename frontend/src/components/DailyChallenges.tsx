@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/store/AuthContext";
-import { completeChallenge, getDailyChallenges } from "@/lib/gamificationClient";
+import { completeChallenge, getDailyChallenges, checkAchievements } from "@/lib/gamificationClient";
+import { notifyAchievement, notifyXP } from "./AchievementNotification";
 import { CheckCircle2 } from "lucide-react";
 
 interface Challenge {
@@ -39,7 +40,14 @@ export const DailyChallenges = () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      await completeChallenge(user.id, challengeId);
+      const resp = await completeChallenge(user.id, challengeId);
+      if (resp?.xp_awarded) {
+        notifyXP(resp.xp_awarded);
+      }
+      try {
+        const chk = await checkAchievements(user.id);
+        (chk.unlocked || []).forEach((u: any) => notifyAchievement(u.title, u.xp_reward));
+      } catch {}
       await load();
     } finally {
       setLoading(false);

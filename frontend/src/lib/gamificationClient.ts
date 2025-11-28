@@ -53,3 +53,15 @@ export async function getAchievements(userId: string) {
   if (!res.ok) throw new Error("getAchievements failed");
   return res.json();
 }
+
+export async function getBadges(userId: string) {
+  const res = await fetch(`${BASE}/api/profile/badges?user_id=${userId}`);
+  if (!res.ok) throw new Error("getBadges failed");
+  return res.json();
+}
+
+export async function dailyLogin(userId: string) {
+  const res = await fetch(`${BASE}/api/profile/daily-login?user_id=${userId}`, { method: "POST" });
+  if (!res.ok) throw new Error("dailyLogin failed");
+  return res.json();
+}

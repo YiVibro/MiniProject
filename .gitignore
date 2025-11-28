@@ -17,3 +17,4 @@ frontend/.env
 backend/.env
 PDFBrain/.env
 new_agent/.env
+PROFILE_SETUP.md

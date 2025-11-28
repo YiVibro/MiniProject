@@ -161,30 +161,28 @@ async def get_stats(user_id: str):
 
 @router.get("/achievements", response_model=List[Achievement])
 async def get_achievements(user_id: str):
-    """Get user achievements with earned status"""
+    """Get all achievements with earned status for the user (locked included)."""
     try:
-        # Join user_achievements with achievements table
-        response = supabase.table("user_achievements").select(
-            "*, achievements(*)"
-        ).eq("user_id", user_id).execute()
-        
-        if not response.data:
-            return []
-        
-        achievements = []
-        for item in response.data:
-            achievement_data = item.get("achievements", {})
-            achievements.append(Achievement(
-                id=achievement_data.get("id"),
-                title=achievement_data.get("title"),
-                description=achievement_data.get("description"),
-                icon=achievement_data.get("icon"),
-                earned=item.get("earned", False),
-                progress=item.get("progress", 0),
-                earned_at=item.get("earned_at")
+        # Fetch master list
+        ach_res = supabase.table("achievements").select("id,title,description,icon").execute()
+        master = ach_res.data or []
+        # Fetch user status
+        ua_res = supabase.table("user_achievements").select("achievement_id,earned,progress,earned_at").eq("user_id", user_id).execute()
+        status_map = {row.get("achievement_id"): row for row in (ua_res.data or [])}
+
+        out: List[Achievement] = []
+        for a in master:
+            s = status_map.get(a.get("id")) or {}
+            out.append(Achievement(
+                id=a.get("id"),
+                title=a.get("title"),
+                description=a.get("description"),
+                icon=a.get("icon"),
+                earned=bool(s.get("earned", False)),
+                progress=int(s.get("progress", 0)) if s.get("progress") is not None else 0,
+                earned_at=s.get("earned_at")
             ))
-        
-        return achievements
+        return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch achievements: {str(e)}")
 
@@ -226,20 +224,24 @@ async def award_xp(payload: AwardXPRequest):
 @router.get("/badges")
 async def get_badges(user_id: str):
     try:
-        response = supabase.table("user_badges").select("*, badges(*)").eq("user_id", user_id).execute()
-        badges = []
-        for row in response.data or []:
-            b = row.get("badges", {})
-            badges.append({
+        # Fetch all badges
+        b_res = supabase.table("badges").select("id,name,description,icon,category,rarity").execute()
+        master = b_res.data or []
+        # Fetch user's earned badges
+        ub_res = supabase.table("user_badges").select("badge_id,earned_at").eq("user_id", user_id).execute()
+        earned_map = {row.get("badge_id"): row.get("earned_at") for row in (ub_res.data or [])}
+        out = []
+        for b in master:
+            out.append({
                 "id": b.get("id"),
                 "name": b.get("name"),
                 "description": b.get("description"),
                 "icon": b.get("icon"),
                 "category": b.get("category"),
                 "rarity": b.get("rarity"),
-                "earned_at": row.get("earned_at")
+                "earned_at": earned_map.get(b.get("id"))
             })
-        return badges
+        return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch badges: {str(e)}")
 
@@ -342,6 +344,35 @@ async def complete_challenge(payload: CompleteChallengeRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to complete challenge: {str(e)}")
+
+@router.post("/daily-login")
+async def daily_login(user_id: str):
+    """Award a once-per-day login bonus (default 5 XP)."""
+    try:
+        today = datetime.now().date().isoformat()
+        res = supabase.table("user_stats").select("last_daily_login_reward,total_xp").eq("user_id", user_id).maybe_single().execute()
+        stats = res.data or {}
+        if stats.get("last_daily_login_reward") == today:
+            return {"awarded": False, "xp_awarded": 0}
+        # Award 5 XP
+        current = int(stats.get("total_xp", 0))
+        new_total = current + 5
+        level_info = _recompute_level(new_total)
+        supabase.table("user_stats").update({
+            "total_xp": new_total,
+            "current_level": level_info["current_level"],
+            "xp_to_next_level": level_info["xp_to_next_level"],
+            "last_daily_login_reward": today,
+            "last_activity_date": today
+        }).eq("user_id", user_id).execute()
+        supabase.table("xp_events").insert({
+            "user_id": user_id,
+            "amount": 5,
+            "reason": "daily_login"
+        }).execute()
+        return {"awarded": True, "xp_awarded": 5, **level_info}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process daily login: {str(e)}")
 
 @router.post("/avatar")
 async def upload_avatar(user_id: str, file: UploadFile = File(...)):

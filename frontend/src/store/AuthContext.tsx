@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { dailyLogin } from "@/lib/gamificationClient";
+import { notifyXP } from "@/components/AchievementNotification";
 
 interface User {
   user_metadata: any;
@@ -36,6 +38,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (session?.user) {
         setUser(session.user);
         console.debug("[AuthContext] Initial session found:", session.user.email);
+        // Attempt daily login XP award
+        try {
+          const resp = await dailyLogin(session.user.id);
+          if (resp?.awarded && resp?.xp_awarded) {
+            notifyXP(resp.xp_awarded);
+          }
+        } catch (e) {
+          console.debug("[AuthContext] dailyLogin error (init):", e);
+        }
       } else {
         console.debug("[AuthContext] No initial session");
       }
@@ -45,10 +56,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     init();
 
     // 2️⃣ Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         setUser(session.user);
         console.debug("[AuthContext] onAuthStateChange: SIGNED_IN", session.user.email);
+        // Attempt daily login XP award
+        try {
+          const resp = await dailyLogin(session.user.id);
+          if (resp?.awarded && resp?.xp_awarded) {
+            notifyXP(resp.xp_awarded);
+          }
+        } catch (e) {
+          console.debug("[AuthContext] dailyLogin error (onAuthStateChange):", e);
+        }
       } else {
         setUser(null);
         console.debug("[AuthContext] onAuthStateChange: SIGNED_OUT");
